@@ -5,13 +5,16 @@
 //   1. The extension's service-worker target → eval `chrome.runtime.reload()`
 //      (preferred; cheap and direct)
 //   2. A chrome-extension://… page (popup or options) → same eval
-//   3. A chrome://extensions tab → eval `chrome.management.setEnabled` toggle
-//      to disable+enable the extension by name
 //
-// Why three strategies: MV3 service workers go dormant after ~30 s of
-// idle and CDP's `/json/list` doesn't include dormant SWs. When the SW
-// is asleep we still want a reload to "just work" without the user
-// having to open the popup first.
+// MV3 service workers go dormant after ~30 s of idle and CDP's
+// `/json/list` doesn't include dormant SWs. When the SW is asleep,
+// having any extension page open (the popup or options) is enough.
+//
+// Tried a third strategy via chrome://extensions
+// `chrome.management.setEnabled(id, false); setEnabled(id, true)`
+// but the disable triggers a re-render of the chrome://extensions
+// page which terminates the running JS mid-IIFE — re-enable never
+// fires and the extension is left disabled. Removed.
 //
 // Requirements:
 //   - Test browser running on the CDP port
@@ -29,20 +32,7 @@
 //   0  reload sent successfully
 //   1  CDP unreachable / no usable target found / WS error
 
-import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-
 const CDP_HOST = process.env.CDP_HOST ?? 'http://localhost:9222';
-
-async function getExtensionName() {
-  if (process.env.EXT_NAME) return process.env.EXT_NAME;
-  const __dirname = dirname(fileURLToPath(import.meta.url));
-  const pkg = JSON.parse(
-    await readFile(join(__dirname, '..', 'package.json'), 'utf8'),
-  );
-  return pkg.name;
-}
 
 async function getTargets() {
   try {
@@ -119,34 +109,10 @@ async function main() {
     return;
   }
 
-  // Strategy 3: chrome://extensions toggle by name
-  const extTab = targets.find(
-    (t) => t.type === 'page' && t.url === 'chrome://extensions/',
-  );
-  if (extTab) {
-    const name = await getExtensionName();
-    console.log(`→ Reload via chrome://extensions toggling "${name}"`);
-    const expr = `
-      (async () => {
-        const all = await chrome.management.getAll();
-        const ext = all.find(e => e.name === ${JSON.stringify(name)});
-        if (!ext) throw new Error('No extension named ' + ${JSON.stringify(name)});
-        await new Promise(r => chrome.management.setEnabled(ext.id, false, r));
-        await new Promise(r => chrome.management.setEnabled(ext.id, true, r));
-        return ext.id;
-      })()
-    `;
-    await evalOnTarget(extTab, expr);
-    console.log('✓ Extension reloaded (SW was dormant)');
-    return;
-  }
-
   console.error('✗ No usable CDP target found.');
-  console.error('  At least one is required:');
-  console.error('    - a live extension service worker');
-  console.error('    - an extension page (popup or options) open');
-  console.error('    - a chrome://extensions tab open');
-  console.error('  Open one of those and re-run.');
+  console.error('  Need either a live service worker or an extension page open.');
+  console.error('  Wake the SW by clicking the toolbar icon (opens the popup), then re-run.');
+  console.error('  Or click "Reload" on chrome://extensions manually.');
   process.exit(1);
 }
 
