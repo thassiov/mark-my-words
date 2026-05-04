@@ -42,6 +42,21 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
   return true; // keep the message channel open for the async sendResponse
 });
 
+const CONTEXT_MENU_ID = 'mmw-save-snippet';
+
+// Re-create the context menu on every SW boot. `removeAll` + `create` is
+// idempotent: it works whether the menu was already there (from a prior
+// SW lifecycle) or not. Doing this here at module load — rather than
+// only in `onInstalled` — ensures the menu exists even when the SW
+// wakes after being killed by Chrome between sessions.
+chrome.contextMenus.removeAll(() => {
+  chrome.contextMenus.create({
+    id: CONTEXT_MENU_ID,
+    title: 'Save selection as snippet',
+    contexts: ['selection'],
+  });
+});
+
 chrome.runtime.onInstalled.addListener((details) => {
   console.log(`[mark-my-words] onInstalled reason=${details.reason} version=${VERSION}`);
 });
@@ -51,20 +66,30 @@ chrome.commands.onCommand.addListener((command) => {
   void handleSaveSelection();
 });
 
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId !== CONTEXT_MENU_ID) return;
+  void handleSaveSelection(tab?.id);
+});
+
 /**
- * Inject {@link readSelectionInPage} into the active tab, take its
- * result, and persist it via {@link SnippetService.save}.
+ * Inject {@link readSelectionInPage} into the given tab (or the active
+ * tab if none specified), take its result, and persist it via
+ * {@link SnippetService.save}.
  *
  * Failure modes:
- *   - No active tab → no-op.
+ *   - No tab id available → no-op.
  *   - Tab is restricted (chrome://, Web Store, etc.) → executeScript
  *     rejects; we log and bail.
  *   - Empty selection → reader returns null → no-op.
- *   - Save throws → log; toast UI lands in MARK-10.
+ *   - Save throws → log. (Toast UI lands in MARK-10.)
  */
-async function handleSaveSelection(): Promise<void> {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab?.id === undefined) {
+async function handleSaveSelection(tabId?: number): Promise<void> {
+  let resolvedTabId = tabId;
+  if (resolvedTabId === undefined) {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    resolvedTabId = tab?.id;
+  }
+  if (resolvedTabId === undefined) {
     console.log('[mark-my-words] no active tab');
     return;
   }
@@ -72,7 +97,7 @@ async function handleSaveSelection(): Promise<void> {
   let result: ReturnType<typeof readSelectionInPage> = null;
   try {
     const injections = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
+      target: { tabId: resolvedTabId },
       func: readSelectionInPage,
     });
     result = injections[0]?.result ?? null;
