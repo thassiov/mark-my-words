@@ -5,15 +5,19 @@ export default defineConfig({
     globals: false,
     environment: 'happy-dom',
     coverage: {
-      provider: 'v8',
+      provider: 'istanbul',
       reporter: ['text', 'lcov', 'html'],
-      include: ['src/**/*.ts', 'src/**/*.tsx'],
+      all: true,
+      skipFull: false,
+      include: ['src/**/*.ts'],
       exclude: [
         'src/**/*.test.ts',
-        'src/**/*.test.tsx',
         'src/**/index.ts',
         'src/**/*.d.ts',
         'src/manifest.ts',
+        // .tsx (Preact components) are tested via Playwright E2E, not unit tests.
+        // Including them here breaks Rolldown's instrumentation parser.
+        'src/**/*.tsx',
       ],
       thresholds: {
         lines: 80,

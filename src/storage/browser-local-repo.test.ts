@@ -36,7 +36,7 @@ const { fakeBrowser, store } = vi.hoisted(() => {
 
 vi.mock('webextension-polyfill', () => ({ default: fakeBrowser }));
 
-const { BrowserLocalRepo } = await import('./browser-local-repo.js');
+import { BrowserLocalRepo } from './browser-local-repo.js';
 
 interface Item {
   id: string;
