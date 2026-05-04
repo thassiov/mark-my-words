@@ -9,6 +9,8 @@
 // Firefox parity (a stretch goal) can re-introduce the polyfill later.
 
 import { readSelectionInPage } from '../content/read-selection.js';
+import { showToastInPage } from '../content/show-toast.js';
+import type { ToastVariant } from '../content/show-toast.js';
 import { createDispatcher } from '../shared/dispatcher.js';
 import { SnippetService } from '../snippets/snippet-service.js';
 import { BrowserLocalRepo } from '../storage/browser-local-repo.js';
@@ -103,18 +105,42 @@ async function handleSaveSelection(tabId?: number): Promise<void> {
     result = injections[0]?.result ?? null;
   } catch (err) {
     console.error('[mark-my-words] failed to read selection:', err);
+    // We can't show a toast here because the page rejected our injection
+    // (chrome://, Web Store, PDF viewer, etc.). User has no feedback by
+    // design — those pages were never going to work anyway.
     return;
   }
 
   if (result === null) {
     console.log('[mark-my-words] nothing selected');
+    await showToast(resolvedTabId, 'info', 'Nothing selected');
     return;
   }
 
   try {
     const saved = await snippets.save(result);
     console.log(`[mark-my-words] saved snippet ${saved.id}: ${saved.selectedText.slice(0, 60)}`);
+    await showToast(resolvedTabId, 'success', 'Snippet saved');
   } catch (err) {
     console.error('[mark-my-words] save failed:', err);
+    const msg = err instanceof Error ? err.message : 'unknown error';
+    await showToast(resolvedTabId, 'error', `Save failed: ${msg}`);
+  }
+}
+
+/**
+ * Inject the toast helper into the given tab. Failures (restricted
+ * pages, missing tab) are swallowed — a missing toast is annoying but
+ * not a real failure mode.
+ */
+async function showToast(tabId: number, variant: ToastVariant, message: string): Promise<void> {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: showToastInPage,
+      args: [variant, message],
+    });
+  } catch (err) {
+    console.warn('[mark-my-words] toast inject failed:', err);
   }
 }
