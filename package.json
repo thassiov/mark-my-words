@@ -10,6 +10,8 @@
   },
   "scripts": {
     "build": "vite build",
+    "build:reload": "vite build && pnpm reload",
+    "reload": "node scripts/reload-extension.mjs",
     "dev": "vite",
     "test": "vitest run",
     "test:watch": "vitest",
