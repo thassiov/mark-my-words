@@ -14,8 +14,7 @@ import { showToastInPage } from '../content/show-toast.js';
 import type { ToastVariant } from '../content/show-toast.js';
 import { createDispatcher } from '../shared/dispatcher.js';
 import { SnippetService } from '../snippets/snippet-service.js';
-import { BrowserLocalRepo } from '../storage/browser-local-repo.js';
-import type { Snippet } from '../shared/types.js';
+import { IdbRepo } from '../storage/idb-repo.js';
 
 import pkg from '../../package.json' with { type: 'json' };
 
@@ -23,7 +22,7 @@ const VERSION = pkg.version || '0.0.0';
 
 console.log(`[mark-my-words] service worker booted (version ${VERSION})`);
 
-const repo = new BrowserLocalRepo<Snippet>('mmw.snippet');
+const repo = new IdbRepo();
 const snippets = new SnippetService(repo);
 const dispatch = createDispatcher({ snippets });
 
