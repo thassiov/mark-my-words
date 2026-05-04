@@ -25,6 +25,10 @@ export const manifest: ManifestV3Export = {
     },
   },
   permissions: ['storage', 'activeTab', 'scripting', 'contextMenus'],
+  options_ui: {
+    page: 'src/options/options.html',
+    open_in_tab: true,
+  },
   commands: {
     'save-snippet': {
       suggested_key: {
