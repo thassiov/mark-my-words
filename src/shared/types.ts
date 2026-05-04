@@ -23,6 +23,15 @@ export interface Snippet {
   pageTitle: string;
   /** Free-form user note. */
   note?: string;
+  /**
+   * Page screenshot captured at save time. JPEG data URL. The browser's
+   * native selection highlight is rendered into the capture — no
+   * canvas overlay drawing.
+   *
+   * Optional because capture can fail on restricted pages and we still
+   * persist the rest of the snippet.
+   */
+  screenshotDataUrl?: string;
   /** ISO 8601 timestamp. */
   createdAt: string;
   /** ISO 8601 timestamp; equals createdAt at first save. */

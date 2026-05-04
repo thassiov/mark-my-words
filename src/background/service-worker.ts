@@ -118,14 +118,43 @@ async function handleSaveSelection(tabId?: number): Promise<void> {
     return;
   }
 
+  // Capture screenshot BEFORE save so the toast/save flow doesn't
+  // visually interfere with the page (toast injection happens later in
+  // both the save-success and save-error branches).
+  const screenshotDataUrl = await captureScreenshot();
+
   try {
-    const saved = await snippets.save(result);
+    const saved = await snippets.save({
+      ...result,
+      ...(screenshotDataUrl !== undefined && { screenshotDataUrl }),
+    });
     console.log(`[mark-my-words] saved snippet ${saved.id}: ${saved.selectedText.slice(0, 60)}`);
     await showToast(resolvedTabId, 'success', 'Snippet saved');
   } catch (err) {
     console.error('[mark-my-words] save failed:', err);
     const msg = err instanceof Error ? err.message : 'unknown error';
     await showToast(resolvedTabId, 'error', `Save failed: ${msg}`);
+  }
+}
+
+/**
+ * Capture the active tab's visible viewport as a JPEG data URL.
+ *
+ * Uses the browser's own paint, which means the native selection
+ * highlight is rendered as part of the image — no canvas overlay
+ * redraw needed. Fails gracefully on restricted pages
+ * (chrome://, Web Store, etc.).
+ *
+ * Quality 70 / JPEG keeps each capture under ~150 KB on typical
+ * desktop viewports. Good enough for v0 against `chrome.storage.local`;
+ * the storage migration to IDB lets us go higher if we want.
+ */
+async function captureScreenshot(): Promise<string | undefined> {
+  try {
+    return await chrome.tabs.captureVisibleTab({ format: 'jpeg', quality: 70 });
+  } catch (err) {
+    console.warn('[mark-my-words] screenshot capture failed:', err);
+    return undefined;
   }
 }
 
