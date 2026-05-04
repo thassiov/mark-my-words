@@ -58,5 +58,5 @@ export function showToastInPage(variant: 'success' | 'info' | 'error', message: 
     setTimeout(() => {
       el.remove();
     }, 200);
-  }, 1800);
+  }, 3800);
 }

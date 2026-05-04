@@ -46,10 +46,10 @@ describe('showToastInPage', () => {
     expect(all[0]?.textContent).toBe('second');
   });
 
-  it('removes the toast after ~2s', () => {
+  it('removes the toast after ~4s', () => {
     showToastInPage('success', 'gone soon');
     expect(document.getElementById('mmw-toast')).not.toBeNull();
-    vi.advanceTimersByTime(1800);
+    vi.advanceTimersByTime(3800);
     // Fade-out scheduled; element still in DOM
     expect(document.getElementById('mmw-toast')).not.toBeNull();
     vi.advanceTimersByTime(200);
