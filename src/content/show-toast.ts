@@ -11,7 +11,11 @@ export type ToastVariant = 'success' | 'info' | 'error';
  * Reuses a single fixed-id element so consecutive saves replace the
  * previous toast instead of stacking.
  */
-export function showToastInPage(variant: 'success' | 'info' | 'error', message: string): void {
+export function showToastInPage(
+  variant: 'success' | 'info' | 'error',
+  message: string,
+  visibleMs: number,
+): void {
   const ID = 'mmw-toast';
   const existing = document.getElementById(ID);
   if (existing !== null) existing.remove();
@@ -58,5 +62,5 @@ export function showToastInPage(variant: 'success' | 'info' | 'error', message: 
     setTimeout(() => {
       el.remove();
     }, 200);
-  }, 3800);
+  }, visibleMs);
 }

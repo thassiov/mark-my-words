@@ -8,6 +8,7 @@
 // return-true + sendResponse pattern fine; that's what we use.
 // Firefox parity (a stretch goal) can re-introduce the polyfill later.
 
+import { TOAST_VISIBLE_MS } from '../config.js';
 import { readSelectionInPage } from '../content/read-selection.js';
 import { showToastInPage } from '../content/show-toast.js';
 import type { ToastVariant } from '../content/show-toast.js';
@@ -138,7 +139,7 @@ async function showToast(tabId: number, variant: ToastVariant, message: string):
     await chrome.scripting.executeScript({
       target: { tabId },
       func: showToastInPage,
-      args: [variant, message],
+      args: [variant, message, TOAST_VISIBLE_MS],
     });
   } catch (err) {
     console.warn('[mark-my-words] toast inject failed:', err);
