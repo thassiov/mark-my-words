@@ -4,10 +4,11 @@
 //
 // We use chrome.* directly here (no webextension-polyfill) because
 // polyfill 0.12.x has known issues registering onMessage listeners
-// inside MV3 service workers. Chromium >= 99 supports Promise-return
-// from onMessage natively, which is all we need. Firefox parity (a
-// stretch goal) can re-introduce the polyfill later via a small shim.
+// inside MV3 service workers. Chromium >= 99 supports the legacy
+// return-true + sendResponse pattern fine; that's what we use.
+// Firefox parity (a stretch goal) can re-introduce the polyfill later.
 
+import { readSelectionInPage } from '../content/read-selection.js';
 import { createDispatcher } from '../shared/dispatcher.js';
 import { SnippetService } from '../snippets/snippet-service.js';
 import { BrowserLocalRepo } from '../storage/browser-local-repo.js';
@@ -46,7 +47,49 @@ chrome.runtime.onInstalled.addListener((details) => {
 });
 
 chrome.commands.onCommand.addListener((command) => {
-  console.log(`[mark-my-words] command received: ${command}`);
-  // Real save handler lands in MARK-7 (content script reads selection
-  // and sends 'snippet:save' via the message bus).
+  if (command !== 'save-snippet') return;
+  void handleSaveSelection();
 });
+
+/**
+ * Inject {@link readSelectionInPage} into the active tab, take its
+ * result, and persist it via {@link SnippetService.save}.
+ *
+ * Failure modes:
+ *   - No active tab → no-op.
+ *   - Tab is restricted (chrome://, Web Store, etc.) → executeScript
+ *     rejects; we log and bail.
+ *   - Empty selection → reader returns null → no-op.
+ *   - Save throws → log; toast UI lands in MARK-10.
+ */
+async function handleSaveSelection(): Promise<void> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tab?.id === undefined) {
+    console.log('[mark-my-words] no active tab');
+    return;
+  }
+
+  let result: ReturnType<typeof readSelectionInPage> = null;
+  try {
+    const injections = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: readSelectionInPage,
+    });
+    result = injections[0]?.result ?? null;
+  } catch (err) {
+    console.error('[mark-my-words] failed to read selection:', err);
+    return;
+  }
+
+  if (result === null) {
+    console.log('[mark-my-words] nothing selected');
+    return;
+  }
+
+  try {
+    const saved = await snippets.save(result);
+    console.log(`[mark-my-words] saved snippet ${saved.id}: ${saved.selectedText.slice(0, 60)}`);
+  } catch (err) {
+    console.error('[mark-my-words] save failed:', err);
+  }
+}

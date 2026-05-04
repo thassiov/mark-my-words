@@ -24,7 +24,7 @@ export const manifest: ManifestV3Export = {
       32: 'icons/icon-32.png',
     },
   },
-  permissions: ['storage', 'activeTab'],
+  permissions: ['storage', 'activeTab', 'scripting'],
   commands: {
     'save-snippet': {
       suggested_key: {
