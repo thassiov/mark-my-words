@@ -10,6 +10,10 @@ build/
 coverage/
 *.lcov
 
+# Playwright
+test-results/
+playwright-report/
+
 # Environment
 .env
 .env.local

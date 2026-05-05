@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     globals: false,
     environment: 'happy-dom',
+    exclude: ['node_modules/**', 'dist/**', 'e2e/**'],
     coverage: {
       provider: 'istanbul',
       reporter: ['text', 'lcov', 'html'],
