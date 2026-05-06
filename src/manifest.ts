@@ -1,11 +1,26 @@
+import { execSync } from 'child_process';
+
 import type { ManifestV3Export } from '@crxjs/vite-plugin';
 
 import pkg from '../package.json' with { type: 'json' };
 
+function gitHash(): string {
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
+  } catch {
+    return 'unknown';
+  }
+}
+
+const version = pkg.version || '0.0.0';
+
 export const manifest: ManifestV3Export = {
   manifest_version: 3,
   name: 'mark-my-words',
-  version: pkg.version || '0.0.0',
+  version,
+  version_name: `${version}-rev-${gitHash()}`,
   description: pkg.description,
   icons: {
     16: 'icons/icon-16.png',
