@@ -2,20 +2,14 @@ import { render } from 'preact';
 import type { ComponentChildren } from 'preact';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 
+import { errorMessage } from '../lib/error.js';
 import { formatRelative } from '../lib/time.js';
+import { hostnameOf } from '../lib/url.js';
 import { isSnippetEvent } from '../shared/messages.js';
 import { send } from '../shared/send.js';
 import type { Snippet } from '../shared/types.js';
 
 type Section = 'library' | 'archived' | 'settings';
-
-function hostnameOf(url: string): string {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return url;
-  }
-}
 
 function archiveLabel(busy: boolean, isArchived: boolean): string {
   if (busy) return '…';
@@ -574,7 +568,7 @@ function LibrarySection({ archived }: LibrarySectionProps) {
         setSnippets(items);
       })
       .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(errorMessage(err));
       });
   }, [archived]);
 

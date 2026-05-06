@@ -1,6 +1,7 @@
 import { render } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 
+import { errorMessage } from '../lib/error.js';
 import { send } from '../shared/send.js';
 import type { Snippet } from '../shared/types.js';
 
@@ -28,7 +29,7 @@ function App() {
       })
       .catch((err: unknown) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err));
+          setError(errorMessage(err));
         }
       });
     return () => {

@@ -13,6 +13,7 @@ import { MAX_SELECTION_CHARS, TOAST_VISIBLE_MS } from '../config.js';
 import { readSelectionInPage } from '../content/read-selection.js';
 import { showToastInPage } from '../content/show-toast.js';
 import type { ToastVariant } from '../content/show-toast.js';
+import { errorMessage } from '../lib/error.js';
 import { createDispatcher } from '../shared/dispatcher.js';
 import { isMessage } from '../shared/messages.js';
 import type { Message, SnippetEvent } from '../shared/messages.js';
@@ -51,8 +52,7 @@ chrome.runtime.onMessage.addListener((raw: unknown, _sender, sendResponse) => {
       }
     })
     .catch((err: unknown) => {
-      const error = err instanceof Error ? err.message : String(err);
-      sendResponse({ ok: false, error });
+      sendResponse({ ok: false, error: errorMessage(err) });
     });
   return true; // keep the message channel open for the async sendResponse
 });

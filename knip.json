@@ -13,6 +13,6 @@
     "e2e/**/*.{ts,spec.ts}"
   ],
   "project": ["src/**/*.{ts,tsx}"],
-  "ignoreDependencies": ["dependency-cruiser", "eslint-plugin-sonarjs", "madge", "type-coverage"],
+  "ignoreDependencies": [],
   "ignoreExportsUsedInFile": true
 }
