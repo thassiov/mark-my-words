@@ -28,11 +28,11 @@ describe('IdbRepo', () => {
     repo = new IdbRepo(dbName);
   });
 
-  afterEach(async () => {
-    // Cleanup: deleteDatabase via Dexie's API. We re-import the class,
-    // open it again to call delete(), then close. Cheaper would be to
-    // hold onto the Dexie instance — keep it simple here.
-    await indexedDB.deleteDatabase(dbName);
+  afterEach(() => {
+    // Cleanup: deleteDatabase fires-and-forgets — the request resolves
+    // via onsuccess, but the test doesn't need to wait. Each test uses
+    // a fresh, time-stamped dbName so reuse isn't a concern.
+    indexedDB.deleteDatabase(dbName);
   });
 
   describe('put + getById', () => {
@@ -65,7 +65,7 @@ describe('IdbRepo', () => {
       await repo.put(baseSnippet({ id: 'b', selectedText: 'two' }));
       const all = await repo.getAll();
       expect(all).toHaveLength(2);
-      expect(all.map((i) => i.selectedText).sort()).toEqual(['one', 'two']);
+      expect(all.map((i) => i.selectedText).toSorted()).toEqual(['one', 'two']);
     });
   });
 

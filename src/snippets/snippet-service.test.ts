@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { Repository } from '../storage/repository.js';
 import type { Snippet, SnippetInput } from '../shared/types.js';
+import type { Repository } from '../storage/repository.js';
 
 import { SnippetService, normalizeTags } from './snippet-service.js';
 

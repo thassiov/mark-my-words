@@ -35,12 +35,12 @@ export interface ReadSelectionResult {
 export function readSelectionInPage(): ReadSelectionResult | null {
   const MAX_CONTEXT = 200;
 
-  const sel = window.getSelection();
+  const sel = globalThis.getSelection();
   if (sel === null || sel.isCollapsed || sel.rangeCount === 0) return null;
 
   // Normalize: collapse all whitespace sequences (including \n injected by
   // replaced elements like <img>) to a single space, then trim.
-  const text = sel.toString().replace(/\s+/g, ' ').trim();
+  const text = sel.toString().replaceAll(/\s+/g, ' ').trim();
   if (text.length === 0) return null;
 
   const range = sel.getRangeAt(0);
@@ -55,12 +55,43 @@ export function readSelectionInPage(): ReadSelectionResult | null {
   // selection — same paragraph for a small in-paragraph selection;
   // a wider section only when the selection itself crosses paragraphs.
   const BLOCK_TAGS = new Set([
-    'P', 'DIV', 'LI', 'BLOCKQUOTE', 'ARTICLE', 'SECTION', 'ASIDE',
-    'HEADER', 'FOOTER', 'MAIN', 'FIGURE', 'FIGCAPTION', 'NAV',
-    'BODY', 'HTML', 'TD', 'TH', 'DL', 'DD', 'DT', 'PRE',
-    'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
-    'UL', 'OL', 'TABLE', 'TR', 'TBODY', 'THEAD', 'TFOOT',
-    'FORM', 'FIELDSET', 'ADDRESS',
+    'P',
+    'DIV',
+    'LI',
+    'BLOCKQUOTE',
+    'ARTICLE',
+    'SECTION',
+    'ASIDE',
+    'HEADER',
+    'FOOTER',
+    'MAIN',
+    'FIGURE',
+    'FIGCAPTION',
+    'NAV',
+    'BODY',
+    'HTML',
+    'TD',
+    'TH',
+    'DL',
+    'DD',
+    'DT',
+    'PRE',
+    'H1',
+    'H2',
+    'H3',
+    'H4',
+    'H5',
+    'H6',
+    'UL',
+    'OL',
+    'TABLE',
+    'TR',
+    'TBODY',
+    'THEAD',
+    'TFOOT',
+    'FORM',
+    'FIELDSET',
+    'ADDRESS',
   ]);
   let scope: Element | null =
     range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
@@ -70,68 +101,66 @@ export function readSelectionInPage(): ReadSelectionResult | null {
     scope = scope.parentElement;
   }
   const root = scope ?? document.body;
-  if (root !== null) {
-    // Skip text inside elements that aren't visible/readable content —
-    // <style>, <script>, <noscript>, <template>. Otherwise stylesheet
-    // rules and inline scripts leak into contextBefore/contextAfter.
-    const SKIP_PARENT_TAGS = new Set(['STYLE', 'SCRIPT', 'NOSCRIPT', 'TEMPLATE']);
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-      acceptNode(node) {
-        const parent = node.parentElement;
-        if (parent !== null && SKIP_PARENT_TAGS.has(parent.tagName)) {
-          return NodeFilter.FILTER_REJECT;
-        }
-        return NodeFilter.FILTER_ACCEPT;
-      },
-    });
-    for (let n = walker.nextNode(); n !== null; n = walker.nextNode()) {
-      const tn = n as Text;
-      const data = tn.data;
-      if (data.length === 0) continue;
+  // Skip text inside elements that aren't visible/readable content —
+  // <style>, <script>, <noscript>, <template>. Otherwise stylesheet
+  // rules and inline scripts leak into contextBefore/contextAfter.
+  const SKIP_PARENT_TAGS = new Set(['STYLE', 'SCRIPT', 'NOSCRIPT', 'TEMPLATE']);
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement;
+      if (parent !== null && SKIP_PARENT_TAGS.has(parent.tagName)) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  for (let n = walker.nextNode(); n !== null; n = walker.nextNode()) {
+    const tn = n as Text;
+    const data = tn.data;
+    if (data.length === 0) continue;
 
-      // Classify the text node by comparing its endpoints against the
-      // range. Range.comparePoint returns -1 (before), 0 (inside), 1 (after).
-      let startCmp: number;
-      let endCmp: number;
-      try {
-        startCmp = range.comparePoint(tn, 0);
-        endCmp = range.comparePoint(tn, data.length);
-      } catch {
-        // comparePoint can throw if the node isn't comparable to the range.
-        continue;
-      }
+    // Classify the text node by comparing its endpoints against the
+    // range. Range.comparePoint returns -1 (before), 0 (inside), 1 (after).
+    let startCmp: number;
+    let endCmp: number;
+    try {
+      startCmp = range.comparePoint(tn, 0);
+      endCmp = range.comparePoint(tn, data.length);
+    } catch {
+      // comparePoint can throw if the node isn't comparable to the range.
+      continue;
+    }
 
-      if (endCmp === -1) {
-        // Entirely before the selection.
-        contextBefore += data;
-      } else if (startCmp === 1) {
-        // Entirely after the selection.
-        contextAfter += data;
-      } else if (startCmp === 0 && endCmp === 0) {
-        // Entirely inside — part of the selection itself.
-      } else if (tn === startContainer && tn === endContainer) {
-        contextBefore += data.slice(0, range.startOffset);
-        contextAfter += data.slice(range.endOffset);
-      } else if (tn === startContainer) {
-        contextBefore += data.slice(0, range.startOffset);
-      } else if (tn === endContainer) {
-        contextAfter += data.slice(range.endOffset);
-      } else if (endCmp === 0 && startCmp === -1) {
-        // Boundary lands exactly at this node's end — treat as fully before.
-        contextBefore += data;
-      } else if (startCmp === 0 && endCmp === 1) {
-        // Boundary lands exactly at this node's start — treat as fully after.
-        contextAfter += data;
-      }
+    if (endCmp === -1) {
+      // Entirely before the selection.
+      contextBefore += data;
+    } else if (startCmp === 1) {
+      // Entirely after the selection.
+      contextAfter += data;
+    } else if (startCmp === 0 && endCmp === 0) {
+      // Entirely inside — part of the selection itself.
+    } else if (tn === startContainer && tn === endContainer) {
+      contextBefore += data.slice(0, range.startOffset);
+      contextAfter += data.slice(range.endOffset);
+    } else if (tn === startContainer) {
+      contextBefore += data.slice(0, range.startOffset);
+    } else if (tn === endContainer) {
+      contextAfter += data.slice(range.endOffset);
+    } else if (endCmp === 0 && startCmp === -1) {
+      // Boundary lands exactly at this node's end — treat as fully before.
+      contextBefore += data;
+    } else if (startCmp === 0 && endCmp === 1) {
+      // Boundary lands exactly at this node's start — treat as fully after.
+      contextAfter += data;
+    }
 
-      // Bound buffers so a long page doesn't blow up memory.
-      if (contextBefore.length > MAX_CONTEXT) {
-        contextBefore = contextBefore.slice(-MAX_CONTEXT);
-      }
-      if (contextAfter.length >= MAX_CONTEXT) {
-        contextAfter = contextAfter.slice(0, MAX_CONTEXT);
-        break;
-      }
+    // Bound buffers so a long page doesn't blow up memory.
+    if (contextBefore.length > MAX_CONTEXT) {
+      contextBefore = contextBefore.slice(-MAX_CONTEXT);
+    }
+    if (contextAfter.length >= MAX_CONTEXT) {
+      contextAfter = contextAfter.slice(0, MAX_CONTEXT);
+      break;
     }
   }
 
@@ -146,6 +175,9 @@ export function readSelectionInPage(): ReadSelectionResult | null {
     pageTitle: document.title,
   };
 
+  // `globalThis` doesn't carry `.parent` in the TS lib types; the iframe
+  // check is genuinely about the Window object and reads naturally as such.
+  // eslint-disable-next-line unicorn/prefer-global-this
   if (window !== window.parent) {
     result.iframeUrl = location.href;
   }

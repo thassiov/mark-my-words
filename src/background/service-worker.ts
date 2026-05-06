@@ -8,6 +8,7 @@
 // return-true + sendResponse pattern fine; that's what we use.
 // Firefox parity (a stretch goal) can re-introduce the polyfill later.
 
+import pkg from '../../package.json' with { type: 'json' };
 import { MAX_SELECTION_CHARS, TOAST_VISIBLE_MS } from '../config.js';
 import { readSelectionInPage } from '../content/read-selection.js';
 import { showToastInPage } from '../content/show-toast.js';
@@ -18,8 +19,6 @@ import type { Message, SnippetEvent } from '../shared/messages.js';
 import type { Snippet } from '../shared/types.js';
 import { SnippetService } from '../snippets/snippet-service.js';
 import { IdbRepo } from '../storage/idb-repo.js';
-
-import pkg from '../../package.json' with { type: 'json' };
 
 const VERSION = pkg.version || '0.0.0';
 
@@ -44,18 +43,17 @@ chrome.runtime.onMessage.addListener((raw: unknown, _sender, sendResponse) => {
     return;
   }
 
-  dispatch(raw).then(
-    (value) => {
+  dispatch(raw)
+    .then((value) => {
       sendResponse({ ok: true, value });
       if (isMessage(raw)) {
         broadcastSnippetEvent(raw, value);
       }
-    },
-    (err: unknown) => {
+    })
+    .catch((err: unknown) => {
       const error = err instanceof Error ? err.message : String(err);
       sendResponse({ ok: false, error });
-    },
-  );
+    });
   return true; // keep the message channel open for the async sendResponse
 });
 
@@ -116,15 +114,15 @@ async function handleSaveSelection(tabId?: number): Promise<void> {
     return;
   }
 
-  let result: ReturnType<typeof readSelectionInPage> = null;
+  let result: ReturnType<typeof readSelectionInPage>;
   try {
     const injections = await chrome.scripting.executeScript({
       target: { tabId: resolvedTabId },
       func: readSelectionInPage,
     });
     result = injections[0]?.result ?? null;
-  } catch (err) {
-    console.error('[mark-my-words] failed to read selection:', err);
+  } catch (error) {
+    console.error('[mark-my-words] failed to read selection:', error);
     // We can't show a toast here because the page rejected our injection
     // (chrome://, Web Store, PDF viewer, etc.). User has no feedback by
     // design — those pages were never going to work anyway.
@@ -138,7 +136,9 @@ async function handleSaveSelection(tabId?: number): Promise<void> {
   }
 
   if (result.selectedText.length > MAX_SELECTION_CHARS) {
-    console.log(`[mark-my-words] selection too large (${String(result.selectedText.length)} chars)`);
+    console.log(
+      `[mark-my-words] selection too large (${String(result.selectedText.length)} chars)`,
+    );
     await showToast(resolvedTabId, 'info', 'Selection too large — try selecting less text');
     return;
   }
@@ -160,9 +160,9 @@ async function handleSaveSelection(tabId?: number): Promise<void> {
     // directly.
     emitSnippetEvent({ type: 'snippet:created', snippet: saved });
     await showToast(resolvedTabId, 'success', 'Snippet saved', saved.id);
-  } catch (err) {
-    console.error('[mark-my-words] save failed:', err);
-    const msg = err instanceof Error ? err.message : 'unknown error';
+  } catch (error) {
+    console.error('[mark-my-words] save failed:', error);
+    const msg = error instanceof Error ? error.message : 'unknown error';
     await showToast(resolvedTabId, 'error', `Save failed: ${msg}`);
   }
 }
@@ -181,8 +181,8 @@ async function handleSaveSelection(tabId?: number): Promise<void> {
 async function captureScreenshot(): Promise<string | undefined> {
   try {
     return await chrome.tabs.captureVisibleTab({ format: 'jpeg', quality: 70 });
-  } catch (err) {
-    console.warn('[mark-my-words] screenshot capture failed:', err);
+  } catch (error) {
+    console.warn('[mark-my-words] screenshot capture failed:', error);
     return undefined;
   }
 }
@@ -204,8 +204,8 @@ async function showToast(
       func: showToastInPage,
       args: [variant, message, TOAST_VISIBLE_MS, snippetId],
     });
-  } catch (err) {
-    console.warn('[mark-my-words] toast inject failed:', err);
+  } catch (error) {
+    console.warn('[mark-my-words] toast inject failed:', error);
   }
 }
 
@@ -215,22 +215,33 @@ async function showToast(
  * and we ignore it.
  */
 function emitSnippetEvent(event: SnippetEvent): void {
-  chrome.runtime.sendMessage(event).catch(() => undefined);
+  chrome.runtime.sendMessage(event).catch(() => {
+    // No listener is the common case (no Library tab open) — swallow.
+  });
 }
 
 /** Translate a dispatcher-handled message into the right SnippetEvent. */
 function broadcastSnippetEvent(msg: Message, value: unknown): void {
   let event: SnippetEvent | null = null;
-  if (msg.type === 'snippet:save') {
-    event = { type: 'snippet:created', snippet: value as Snippet };
-  } else if (msg.type === 'snippet:delete') {
-    event = { type: 'snippet:deleted', id: msg.payload.id };
-  } else if (
-    msg.type === 'snippet:update' ||
-    msg.type === 'snippet:archive' ||
-    msg.type === 'snippet:unarchive'
-  ) {
-    event = { type: 'snippet:updated', snippet: value as Snippet };
+  switch (msg.type) {
+    case 'snippet:save': {
+      event = { type: 'snippet:created', snippet: value as Snippet };
+
+      break;
+    }
+    case 'snippet:delete': {
+      event = { type: 'snippet:deleted', id: msg.payload.id };
+
+      break;
+    }
+    case 'snippet:update':
+    case 'snippet:archive':
+    case 'snippet:unarchive': {
+      event = { type: 'snippet:updated', snippet: value as Snippet };
+
+      break;
+    }
+    // No default
   }
   if (event === null) return;
   emitSnippetEvent(event);

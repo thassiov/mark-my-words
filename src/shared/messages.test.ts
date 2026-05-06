@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { SnippetInput } from './types.js';
-
 import { isMessage } from './messages.js';
+import type { SnippetInput } from './types.js';
 
 const baseInput: SnippetInput = {
   selectedText: 'hello',

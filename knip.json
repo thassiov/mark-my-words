@@ -1,0 +1,18 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/manifest.ts",
+    "src/background/service-worker.ts",
+    "src/content/read-selection.ts",
+    "src/content/show-toast.ts",
+    "src/options/options.tsx",
+    "src/options/options.css",
+    "src/popup/popup.tsx",
+    "src/popup/popup.html",
+    "scripts/**/*.{mjs,ts}",
+    "e2e/**/*.{ts,spec.ts}"
+  ],
+  "project": ["src/**/*.{ts,tsx}"],
+  "ignoreDependencies": ["dependency-cruiser", "eslint-plugin-sonarjs", "madge", "type-coverage"],
+  "ignoreExportsUsedInFile": true
+}

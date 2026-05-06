@@ -18,8 +18,8 @@ export function showToastInPage(
   snippetId?: string,
 ): void {
   const ID = 'mmw-toast';
-  const existing = document.getElementById(ID);
-  if (existing !== null) existing.remove();
+  const existing = document.querySelector(`#${ID}`);
+  existing?.remove();
 
   const colors = {
     success: { bg: '#16a34a', fg: '#fff' },
@@ -34,14 +34,14 @@ export function showToastInPage(
 
   const label = document.createElement('span');
   label.textContent = message;
-  el.appendChild(label);
+  el.append(label);
 
   if (snippetId !== undefined) {
     const hint = document.createElement('span');
     hint.textContent = ' — view →';
     hint.style.opacity = '0.75';
     hint.style.fontSize = '12px';
-    el.appendChild(hint);
+    el.append(hint);
   }
 
   Object.assign(el.style, {
@@ -60,8 +60,8 @@ export function showToastInPage(
     opacity: '0',
     transform: 'translateY(-8px)',
     transition: 'opacity 150ms ease, transform 150ms ease',
-    pointerEvents: snippetId !== undefined ? 'auto' : 'none',
-    cursor: snippetId !== undefined ? 'pointer' : 'default',
+    pointerEvents: snippetId === undefined ? 'none' : 'auto',
+    cursor: snippetId === undefined ? 'default' : 'pointer',
     userSelect: 'none',
   });
 
@@ -71,7 +71,7 @@ export function showToastInPage(
     });
   }
 
-  document.documentElement.appendChild(el);
+  document.documentElement.append(el);
   // Force reflow so the transition runs.
   void el.offsetHeight;
   el.style.opacity = '1';

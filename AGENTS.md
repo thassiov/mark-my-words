@@ -105,6 +105,7 @@ So `chrome.commands.onCommand` is **never** fired by Playwright key
 events.
 
 Workarounds:
+
 - Verify shortcut registration via `chrome.commands.getAll()` from the
   popup or options page.
 - Unit-test the page-side function the shortcut calls.
@@ -122,13 +123,13 @@ during testing — just be aware screenshots won't appear for those pages.
 
 ## Key source locations
 
-| What | Where |
-|---|---|
-| Extension config values (toast timeout, etc.) | `src/config.ts` |
-| Snippet type + edit shape | `src/shared/types.ts` |
-| Message bus (all SW messages) | `src/shared/messages.ts` |
+| What                                                | Where                              |
+| --------------------------------------------------- | ---------------------------------- |
+| Extension config values (toast timeout, etc.)       | `src/config.ts`                    |
+| Snippet type + edit shape                           | `src/shared/types.ts`              |
+| Message bus (all SW messages)                       | `src/shared/messages.ts`           |
 | Service worker (save flow, context menu, shortcuts) | `src/background/service-worker.ts` |
-| Library + Settings UI | `src/options/options.tsx` |
-| Popup | `src/popup/popup.tsx` |
-| Toast injected into pages | `src/content/show-toast.ts` |
-| Selection reader injected into pages | `src/content/read-selection.ts` |
+| Library + Settings UI                               | `src/options/options.tsx`          |
+| Popup                                               | `src/popup/popup.tsx`              |
+| Toast injected into pages                           | `src/content/show-toast.ts`        |
+| Selection reader injected into pages                | `src/content/read-selection.ts`    |

@@ -1,7 +1,7 @@
-import { newId } from '../lib/ulid.js';
 import { nowIso } from '../lib/time.js';
-import type { Repository } from '../storage/repository.js';
+import { newId } from '../lib/ulid.js';
 import type { Snippet, SnippetEdit, SnippetInput } from '../shared/types.js';
+import type { Repository } from '../storage/repository.js';
 
 /**
  * Normalize tag input: trim each entry, lowercase, drop empties, dedupe
@@ -83,9 +83,11 @@ export class SnippetService {
     );
     if (archived) {
       filtered.sort((a, b) => {
-        // Both have archivedAt by the filter above.
-        const aa = a.archivedAt as string;
-        const bb = b.archivedAt as string;
+        // Both have archivedAt by the filter above; treat undefined as
+        // empty string just to satisfy the type narrower without
+        // resorting to a non-null assertion.
+        const aa = a.archivedAt ?? '';
+        const bb = b.archivedAt ?? '';
         if (aa !== bb) return aa < bb ? 1 : -1;
         return a.id < b.id ? 1 : -1;
       });

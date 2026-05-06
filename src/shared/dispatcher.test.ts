@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { SnippetService } from '../snippets/snippet-service.js';
-import type { Snippet, SnippetInput } from './types.js';
 
 import { createDispatcher, UnknownMessageError } from './dispatcher.js';
+import type { Snippet, SnippetInput } from './types.js';
 
 function makeFakeService(): SnippetService & {
   save: ReturnType<typeof vi.fn>;
@@ -172,9 +172,9 @@ describe('createDispatcher', () => {
       snippets.archive.mockRejectedValue(new Error('not found'));
       const dispatch = createDispatcher({ snippets });
 
-      await expect(
-        dispatch({ type: 'snippet:archive', payload: { id: 'x' } }),
-      ).rejects.toThrow('not found');
+      await expect(dispatch({ type: 'snippet:archive', payload: { id: 'x' } })).rejects.toThrow(
+        'not found',
+      );
     });
   });
 
@@ -196,9 +196,9 @@ describe('createDispatcher', () => {
       snippets.unarchive.mockRejectedValue(new Error('not found'));
       const dispatch = createDispatcher({ snippets });
 
-      await expect(
-        dispatch({ type: 'snippet:unarchive', payload: { id: 'x' } }),
-      ).rejects.toThrow('not found');
+      await expect(dispatch({ type: 'snippet:unarchive', payload: { id: 'x' } })).rejects.toThrow(
+        'not found',
+      );
     });
   });
 

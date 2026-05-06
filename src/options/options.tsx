@@ -17,6 +17,35 @@ function hostnameOf(url: string): string {
   }
 }
 
+function archiveLabel(busy: boolean, isArchived: boolean): string {
+  if (busy) return '…';
+  return isArchived ? 'Unarchive' : 'Archive';
+}
+
+interface BuildSubtitleArgs {
+  error: string | null;
+  snippets: readonly Snippet[] | null;
+  filteredLength: number;
+  query: string;
+  noun: string;
+}
+
+function buildSubtitle({
+  error,
+  snippets,
+  filteredLength,
+  query,
+  noun,
+}: BuildSubtitleArgs): string {
+  if (error !== null) return `Couldn't connect: ${error}`;
+  if (snippets === null) return 'Loading…';
+  if (query.trim() === '') {
+    const word = snippets.length === 1 ? noun : `${noun}s`;
+    return `${String(snippets.length)} ${word}.`;
+  }
+  return `${String(filteredLength)} of ${String(snippets.length)} shown.`;
+}
+
 function ArchivedPill() {
   return (
     <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700">
@@ -33,7 +62,7 @@ function ArchivedPill() {
 function tagHue(tag: string): number {
   let h = 0;
   for (let i = 0; i < tag.length; i += 1) {
-    h = (h * 31 + tag.charCodeAt(i)) | 0;
+    h = Math.trunc(h * 31 + (tag.codePointAt(i) ?? 0));
   }
   return ((h % 360) + 360) % 360;
 }
@@ -76,7 +105,7 @@ function TagChip({ tag, onClick, onRemove, active = false }: TagChipProps) {
       }`}
     >
       <span>#{tag}</span>
-      {onRemove !== undefined ? (
+      {onRemove === undefined ? null : (
         <button
           type="button"
           onClick={(e) => {
@@ -88,7 +117,7 @@ function TagChip({ tag, onClick, onRemove, active = false }: TagChipProps) {
         >
           ×
         </button>
-      ) : null}
+      )}
     </span>
   );
 }
@@ -156,8 +185,12 @@ function TagAdder({ snippet }: TagAdderProps) {
       list={TAG_SUGGESTIONS_ID}
       value={value}
       disabled={busy}
-      onClick={(e) => e.stopPropagation()}
-      onInput={(e) => setValue((e.target as HTMLInputElement).value)}
+      onClick={(e) => {
+        e.stopPropagation();
+      }}
+      onInput={(e) => {
+        setValue((e.target as HTMLInputElement).value);
+      }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ',') {
           e.preventDefault();
@@ -181,15 +214,13 @@ function TagAdder({ snippet }: TagAdderProps) {
 
 interface DetailProps {
   snippet: Snippet;
-  /** Other tags in the library — used to populate the edit-mode autocomplete. */
-  allTags: readonly string[];
   onClose: () => void;
   onDeleted: (id: string) => void;
   onUpdated: (snippet: Snippet) => void;
   onTagClick: (tag: string) => void;
 }
 
-function SnippetDetail({ snippet, allTags, onClose, onDeleted, onUpdated, onTagClick }: DetailProps) {
+function SnippetDetail({ snippet, onClose, onDeleted, onUpdated, onTagClick }: DetailProps) {
   const [editing, setEditing] = useState(false);
   const [editNote, setEditNote] = useState(snippet.note ?? '');
   const [editTags, setEditTags] = useState<string[]>(snippet.tags ?? []);
@@ -198,7 +229,8 @@ function SnippetDetail({ snippet, allTags, onClose, onDeleted, onUpdated, onTagC
   const [deleting, setDeleting] = useState(false);
   const [archiving, setArchiving] = useState(false);
 
-  const isArchived = snippet.archivedAt !== undefined;
+  const archivedAt = snippet.archivedAt;
+  const isArchived = archivedAt !== undefined;
   const tags = snippet.tags ?? [];
 
   useEffect(() => {
@@ -224,7 +256,7 @@ function SnippetDetail({ snippet, allTags, onClose, onDeleted, onUpdated, onTagC
     try {
       // Cast: send()'s conditional return type doesn't narrow through
       // the generic, so we assert the concrete shape here.
-      const updated = (await send({
+      const updated = await send({
         type: 'snippet:update',
         payload: {
           id: snippet.id,
@@ -233,7 +265,7 @@ function SnippetDetail({ snippet, allTags, onClose, onDeleted, onUpdated, onTagC
             tags: editTags,
           },
         },
-      })) as Snippet;
+      });
       onUpdated(updated);
       setEditing(false);
     } finally {
@@ -242,7 +274,7 @@ function SnippetDetail({ snippet, allTags, onClose, onDeleted, onUpdated, onTagC
   }
 
   async function handleDelete() {
-    if (!window.confirm('Delete this snippet?')) return;
+    if (!globalThis.confirm('Delete this snippet?')) return;
     setDeleting(true);
     try {
       await send({ type: 'snippet:delete', payload: { id: snippet.id } });
@@ -255,10 +287,10 @@ function SnippetDetail({ snippet, allTags, onClose, onDeleted, onUpdated, onTagC
   async function handleArchiveToggle() {
     setArchiving(true);
     try {
-      const updated = (await send({
+      const updated = await send({
         type: isArchived ? 'snippet:unarchive' : 'snippet:archive',
         payload: { id: snippet.id },
-      })) as Snippet;
+      });
       onUpdated(updated);
     } finally {
       setArchiving(false);
@@ -285,36 +317,42 @@ function SnippetDetail({ snippet, allTags, onClose, onDeleted, onUpdated, onTagC
           ) : null}
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-400">
             <span>Saved {formatRelative(snippet.createdAt)}</span>
-            {isArchived ? (
+            {archivedAt === undefined ? null : (
               <>
                 <span aria-hidden="true">·</span>
-                <span>Archived {formatRelative(snippet.archivedAt as string)}</span>
+                <span>Archived {formatRelative(archivedAt)}</span>
                 <ArchivedPill />
               </>
-            ) : null}
+            )}
           </div>
         </div>
         <div className="flex flex-shrink-0 items-center gap-1">
-          {!editing ? (
+          {editing ? null : (
             <button
               type="button"
-              onClick={() => setEditing(true)}
+              onClick={() => {
+                setEditing(true);
+              }}
               className="rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-700"
             >
               Edit
             </button>
-          ) : null}
+          )}
           <button
             type="button"
-            onClick={handleArchiveToggle}
+            onClick={() => {
+              void handleArchiveToggle();
+            }}
             disabled={archiving}
             className="rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
           >
-            {archiving ? '…' : isArchived ? 'Unarchive' : 'Archive'}
+            {archiveLabel(archiving, isArchived)}
           </button>
           <button
             type="button"
-            onClick={handleDelete}
+            onClick={() => {
+              void handleDelete();
+            }}
             disabled={deleting}
             className="rounded-md px-2 py-1 text-xs text-red-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
           >
@@ -352,7 +390,9 @@ function SnippetDetail({ snippet, allTags, onClose, onDeleted, onUpdated, onTagC
                 rows={3}
                 placeholder="Add a personal note…"
                 value={editNote}
-                onInput={(e) => setEditNote((e.target as HTMLTextAreaElement).value)}
+                onInput={(e) => {
+                  setEditNote((e.target as HTMLTextAreaElement).value);
+                }}
               />
             </section>
             <section>
@@ -365,7 +405,9 @@ function SnippetDetail({ snippet, allTags, onClose, onDeleted, onUpdated, onTagC
                     <TagChip
                       key={t}
                       tag={t}
-                      onRemove={() => setEditTags(editTags.filter((x) => x !== t))}
+                      onRemove={() => {
+                        setEditTags(editTags.filter((x) => x !== t));
+                      }}
                     />
                   ))}
                 </div>
@@ -374,7 +416,9 @@ function SnippetDetail({ snippet, allTags, onClose, onDeleted, onUpdated, onTagC
                 type="text"
                 list={TAG_SUGGESTIONS_ID}
                 value={tagDraft}
-                onInput={(e) => setTagDraft((e.target as HTMLInputElement).value)}
+                onInput={(e) => {
+                  setTagDraft((e.target as HTMLInputElement).value);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ',') {
                     e.preventDefault();
@@ -392,7 +436,9 @@ function SnippetDetail({ snippet, allTags, onClose, onDeleted, onUpdated, onTagC
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={handleSave}
+                onClick={() => {
+                  void handleSave();
+                }}
                 disabled={saving}
                 className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
               >
@@ -430,7 +476,13 @@ function SnippetDetail({ snippet, allTags, onClose, onDeleted, onUpdated, onTagC
             </h2>
             <div className="flex flex-wrap gap-1.5">
               {tags.map((t) => (
-                <TagChip key={t} tag={t} onClick={() => onTagClick(t)} />
+                <TagChip
+                  key={t}
+                  tag={t}
+                  onClick={() => {
+                    onTagClick(t);
+                  }}
+                />
               ))}
             </div>
           </section>
@@ -518,8 +570,12 @@ function LibrarySection({ archived }: LibrarySectionProps) {
     setSnippets(null);
     setError(null);
     send({ type: 'snippet:list', payload: { archived } })
-      .then((items) => setSnippets(items))
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+      .then((items) => {
+        setSnippets(items);
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : String(err));
+      });
   }, [archived]);
 
   // Reactivity: patch local state when the SW broadcasts a mutation event.
@@ -532,35 +588,46 @@ function LibrarySection({ archived }: LibrarySectionProps) {
     }
     function handleEvent(msg: unknown) {
       if (!isSnippetEvent(msg)) return;
-      if (msg.type === 'snippet:created') {
-        if (!matches(msg.snippet)) return;
-        setSnippets((prev) => {
-          const next = prev === null ? [msg.snippet] : [...prev, msg.snippet];
-          next.sort((a, b) => compareForView(a, b, archived));
-          return next;
-        });
-      } else if (msg.type === 'snippet:deleted') {
-        setSnippets((prev) => prev?.filter((s) => s.id !== msg.id) ?? null);
-        setSelectedId((id) => (id === msg.id ? null : id));
-      } else if (msg.type === 'snippet:updated') {
-        const updated = msg.snippet;
-        setSnippets((prev) => {
-          if (prev === null) return null;
-          const exists = prev.some((s) => s.id === updated.id);
-          if (matches(updated)) {
-            const next = exists
-              ? prev.map((s) => (s.id === updated.id ? updated : s))
-              : [...prev, updated];
+      switch (msg.type) {
+        case 'snippet:created': {
+          if (!matches(msg.snippet)) return;
+          setSnippets((prev) => {
+            const next = prev === null ? [msg.snippet] : [...prev, msg.snippet];
             next.sort((a, b) => compareForView(a, b, archived));
             return next;
-          }
-          // No longer matches our view — drop it and clear any selection.
-          if (exists) {
-            setSelectedId((id) => (id === updated.id ? null : id));
-            return prev.filter((s) => s.id !== updated.id);
-          }
-          return prev;
-        });
+          });
+
+          break;
+        }
+        case 'snippet:deleted': {
+          setSnippets((prev) => prev?.filter((s) => s.id !== msg.id) ?? null);
+          setSelectedId((id) => (id === msg.id ? null : id));
+
+          break;
+        }
+        case 'snippet:updated': {
+          const updated = msg.snippet;
+          setSnippets((prev) => {
+            if (prev === null) return null;
+            const exists = prev.some((s) => s.id === updated.id);
+            if (matches(updated)) {
+              const next = exists
+                ? prev.map((s) => (s.id === updated.id ? updated : s))
+                : [...prev, updated];
+              next.sort((a, b) => compareForView(a, b, archived));
+              return next;
+            }
+            // No longer matches our view — drop it and clear any selection.
+            if (exists) {
+              setSelectedId((id) => (id === updated.id ? null : id));
+              return prev.filter((s) => s.id !== updated.id);
+            }
+            return prev;
+          });
+
+          break;
+        }
+        // No default
       }
     }
     chrome.runtime.onMessage.addListener(handleEvent);
@@ -573,7 +640,7 @@ function LibrarySection({ archived }: LibrarySectionProps) {
     if (snippets === null) return [] as string[];
     const set = new Set<string>();
     for (const s of snippets) for (const t of s.tags ?? []) set.add(t);
-    return [...set].sort();
+    return [...set].toSorted();
   }, [snippets]);
 
   // If the active tag disappears from the page (e.g. last snippet with it
@@ -622,14 +689,13 @@ function LibrarySection({ archived }: LibrarySectionProps) {
 
   const heading = archived ? 'Archived' : 'Library';
   const noun = archived ? 'archived snippet' : 'snippet';
-  const subtitle =
-    error !== null
-      ? `Couldn't connect: ${error}`
-      : snippets === null
-        ? 'Loading…'
-        : query.trim() === ''
-          ? `${String(snippets.length)} ${snippets.length === 1 ? noun : `${noun}s`}.`
-          : `${String(filtered.length)} of ${String(snippets.length)} shown.`;
+  const subtitle = buildSubtitle({
+    error,
+    snippets,
+    filteredLength: filtered.length,
+    query,
+    noun,
+  });
 
   return (
     <div className="h-full overflow-auto px-6 py-8">
@@ -648,17 +714,25 @@ function LibrarySection({ archived }: LibrarySectionProps) {
         <input
           type="search"
           value={query}
-          onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+          onInput={(e) => {
+            setQuery((e.target as HTMLInputElement).value);
+          }}
           placeholder={archived ? 'Filter archived…' : 'Filter snippets…'}
           aria-label="Filter snippets"
           className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
         />
-        {activeTag !== null ? (
+        {activeTag === null ? null : (
           <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
             <span>Filtering by</span>
-            <TagChip tag={activeTag} active onRemove={() => setActiveTag(null)} />
+            <TagChip
+              tag={activeTag}
+              active
+              onRemove={() => {
+                setActiveTag(null);
+              }}
+            />
           </div>
-        ) : null}
+        )}
       </div>
 
       {snippets !== null && snippets.length === 0 ? (
@@ -700,7 +774,9 @@ function LibrarySection({ archived }: LibrarySectionProps) {
             return (
               <li
                 key={s.id}
-                onClick={() => setSelectedId(isSelected ? null : s.id)}
+                onClick={() => {
+                  setSelectedId(isSelected ? null : s.id);
+                }}
                 className={`cursor-pointer rounded-lg border bg-white p-4 transition-colors ${
                   isSelected
                     ? 'border-blue-400 bg-blue-50/40'
@@ -716,7 +792,9 @@ function LibrarySection({ archived }: LibrarySectionProps) {
                       key={t}
                       tag={t}
                       active={t === activeTag}
-                      onClick={() => setActiveTag(t === activeTag ? null : t)}
+                      onClick={() => {
+                        setActiveTag(t === activeTag ? null : t);
+                      }}
                     />
                   ))}
                   <TagAdder snippet={s} />
@@ -726,7 +804,9 @@ function LibrarySection({ archived }: LibrarySectionProps) {
                     href={s.sourceUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                    }}
                     className="min-w-0 flex-shrink truncate text-blue-600 hover:underline"
                     title={s.sourceUrl}
                   >
@@ -755,18 +835,19 @@ function LibrarySection({ archived }: LibrarySectionProps) {
           }`}
           style={{ height: 'calc(100vh - 4rem)' }}
         >
-          {selected !== null ? (
+          {selected === null ? null : (
             <SnippetDetail
               snippet={selected}
-              allTags={allTags}
-              onClose={() => setSelectedId(null)}
+              onClose={() => {
+                setSelectedId(null);
+              }}
               onDeleted={handleDeleted}
               onUpdated={handleUpdated}
               onTagClick={(t) => {
                 setActiveTag((cur) => (cur === t ? null : t));
               }}
             />
-          ) : null}
+          )}
         </div>
       </div>
     </div>
@@ -839,7 +920,9 @@ function App() {
             <li key={id}>
               <button
                 type="button"
-                onClick={() => setSection(id)}
+                onClick={() => {
+                  setSection(id);
+                }}
                 className={`w-full rounded-md px-3 py-2 text-left text-sm font-medium transition-colors ${
                   section === id
                     ? 'bg-blue-50 text-blue-700'

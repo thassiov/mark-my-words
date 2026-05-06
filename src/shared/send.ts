@@ -6,12 +6,11 @@ import type { Message, Response } from './messages.js';
  * dispatcher becomes a rejected Promise on the sender side, instead of
  * a silently-resolved-undefined which is what raw `chrome.runtime.sendMessage`
  * gives you when the listener doesn't respond.
+ *
+ * Discriminated by `ok` so that after a `!ok` early-return, `value` is
+ * narrowed to `T` (no non-null assertion needed at the call site).
  */
-interface Envelope<T> {
-  ok: boolean;
-  value?: T;
-  error?: string;
-}
+type Envelope<T> = { ok: true; value: T } | { ok: false; error: string };
 
 /**
  * Send a message to the service worker and await its response.
@@ -25,7 +24,7 @@ export async function send<M extends Message>(msg: M): Promise<Response<M['type'
     throw new Error('No response from service worker');
   }
   if (!env.ok) {
-    throw new Error(env.error ?? 'Unknown error from service worker');
+    throw new Error(env.error);
   }
-  return env.value as Response<M['type']>;
+  return env.value;
 }

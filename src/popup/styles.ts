@@ -1,6 +1,10 @@
-import type { JSX } from 'preact';
+// Use Preact's JSX.CSSProperties via a typeof on a sample element's
+// style prop — avoids both the deprecated `JSX.CSSProperties` global
+// alias and the internal `preact/src/jsx` import path.
+import type { JSX } from 'preact/jsx-runtime';
 
-type Style = JSX.CSSProperties;
+type Style =
+  NonNullable<JSX.IntrinsicElements['div']['style']> extends infer S ? Exclude<S, string> : never;
 
 export const mainStyle: Style = {
   fontFamily: 'system-ui, -apple-system, sans-serif',

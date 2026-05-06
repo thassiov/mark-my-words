@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { Snippet, SnippetInput } from './types.js';
-
 import { send } from './send.js';
+import type { Snippet, SnippetInput } from './types.js';
 
 const baseInput: SnippetInput = {
   selectedText: 'hello',

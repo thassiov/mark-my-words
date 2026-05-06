@@ -34,21 +34,28 @@ export function createDispatcher(deps: DispatcherDeps): Dispatcher {
     }
     const msg: Message = raw;
     switch (msg.type) {
-      case 'snippet:save':
+      case 'snippet:save': {
         return deps.snippets.save(msg.payload);
-      case 'snippet:list':
+      }
+      case 'snippet:list': {
         return deps.snippets.list(msg.payload ?? {});
-      case 'snippet:count':
+      }
+      case 'snippet:count': {
         return deps.snippets.count();
-      case 'snippet:delete':
+      }
+      case 'snippet:delete': {
         await deps.snippets.delete(msg.payload.id);
         return null;
-      case 'snippet:update':
+      }
+      case 'snippet:update': {
         return deps.snippets.update(msg.payload.id, msg.payload.edit);
-      case 'snippet:archive':
+      }
+      case 'snippet:archive': {
         return deps.snippets.archive(msg.payload.id);
-      case 'snippet:unarchive':
+      }
+      case 'snippet:unarchive': {
         return deps.snippets.unarchive(msg.payload.id);
+      }
       default: {
         // Exhaustiveness check — fails to compile if a Message variant is missing above.
         const _exhaustive: never = msg;
