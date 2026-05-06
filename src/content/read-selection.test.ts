@@ -100,4 +100,37 @@ describe('readSelectionInPage', () => {
     const result = readSelectionInPage();
     expect(result?.iframeUrl).toBeUndefined();
   });
+
+  it('collapses embedded newlines and repeated whitespace in selected text', () => {
+    // Simulates \n injected by replaced elements like <img>.
+    const p = document.createElement('p');
+    const text = document.createTextNode('hello\n world\n  foo');
+    p.appendChild(text);
+    document.body.appendChild(p);
+    selectRangeIn(text, 0, text.data.length);
+
+    const result = readSelectionInPage();
+    expect(result?.selectedText).toBe('hello world foo');
+  });
+
+  it('trims leading and trailing whitespace from selected text', () => {
+    const p = document.createElement('p');
+    const text = document.createTextNode('  trimmed  ');
+    p.appendChild(text);
+    document.body.appendChild(p);
+    selectRangeIn(text, 0, text.data.length);
+
+    const result = readSelectionInPage();
+    expect(result?.selectedText).toBe('trimmed');
+  });
+
+  it('returns null when selection collapses to empty after normalization', () => {
+    const p = document.createElement('p');
+    const text = document.createTextNode('  \n  \t  ');
+    p.appendChild(text);
+    document.body.appendChild(p);
+    selectRangeIn(text, 0, text.data.length);
+
+    expect(readSelectionInPage()).toBeNull();
+  });
 });

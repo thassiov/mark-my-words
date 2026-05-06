@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
 import { showToastInPage } from './show-toast.js';
 
@@ -68,5 +68,46 @@ describe('showToastInPage', () => {
     showToastInPage('info', 'top-level', 1000);
     const el = document.getElementById('mmw-toast');
     expect(el?.parentElement).toBe(document.documentElement);
+  });
+
+  it('has pointerEvents none when no snippetId', () => {
+    showToastInPage('success', 'Saved', 1000);
+    const el = document.getElementById('mmw-toast') as HTMLElement;
+    expect(el.style.pointerEvents).toBe('none');
+    expect(el.style.cursor).toBe('default');
+  });
+
+  describe('with snippetId', () => {
+    let sendMessage: MockInstance;
+
+    beforeEach(() => {
+      sendMessage = vi.fn().mockResolvedValue(undefined);
+      vi.stubGlobal('chrome', { runtime: { sendMessage } });
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('sets pointerEvents to auto and cursor to pointer', () => {
+      showToastInPage('success', 'Saved', 1000, 'snip-123');
+      const el = document.getElementById('mmw-toast') as HTMLElement;
+      expect(el.style.pointerEvents).toBe('auto');
+      expect(el.style.cursor).toBe('pointer');
+    });
+
+    it('appends a hint "— view →" span', () => {
+      showToastInPage('success', 'Snippet saved', 1000, 'snip-123');
+      const el = document.getElementById('mmw-toast') as HTMLElement;
+      expect(el.textContent).toContain('— view →');
+    });
+
+    it('clicking sends ui:open-snippet message with the id', () => {
+      showToastInPage('success', 'Saved', 1000, 'snip-abc');
+      const el = document.getElementById('mmw-toast') as HTMLElement;
+      el.click();
+      expect(sendMessage).toHaveBeenCalledOnce();
+      expect(sendMessage).toHaveBeenCalledWith({ type: 'ui:open-snippet', id: 'snip-abc' });
+    });
   });
 });
