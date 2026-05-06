@@ -35,10 +35,15 @@ export function isSnippetEvent(v: unknown): v is SnippetEvent {
  */
 export type Message =
   | { type: 'snippet:save'; payload: SnippetInput }
-  | { type: 'snippet:list'; payload?: { limit?: number; offset?: number } }
+  | {
+      type: 'snippet:list';
+      payload?: { limit?: number; offset?: number; archived?: boolean };
+    }
   | { type: 'snippet:count' }
   | { type: 'snippet:delete'; payload: { id: string } }
-  | { type: 'snippet:update'; payload: { id: string; edit: SnippetEdit } };
+  | { type: 'snippet:update'; payload: { id: string; edit: SnippetEdit } }
+  | { type: 'snippet:archive'; payload: { id: string } }
+  | { type: 'snippet:unarchive'; payload: { id: string } };
 
 /**
  * Maps a message type to its expected response shape.
@@ -53,7 +58,11 @@ export type Response<T extends Message['type']> = T extends 'snippet:save'
         ? null
         : T extends 'snippet:update'
           ? Snippet
-          : never;
+          : T extends 'snippet:archive'
+            ? Snippet
+            : T extends 'snippet:unarchive'
+              ? Snippet
+              : never;
 
 /**
  * Runtime-side guard. Cheap structural check; the real type-safety is
@@ -70,6 +79,8 @@ export function isMessage(v: unknown): v is Message {
     t === 'snippet:list' ||
     t === 'snippet:count' ||
     t === 'snippet:delete' ||
-    t === 'snippet:update'
+    t === 'snippet:update' ||
+    t === 'snippet:archive' ||
+    t === 'snippet:unarchive'
   );
 }

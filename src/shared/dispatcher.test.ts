@@ -11,6 +11,8 @@ function makeFakeService(): SnippetService & {
   count: ReturnType<typeof vi.fn>;
   delete: ReturnType<typeof vi.fn>;
   update: ReturnType<typeof vi.fn>;
+  archive: ReturnType<typeof vi.fn>;
+  unarchive: ReturnType<typeof vi.fn>;
 } {
   const fake = {
     save: vi.fn(),
@@ -18,6 +20,8 @@ function makeFakeService(): SnippetService & {
     count: vi.fn(),
     delete: vi.fn(),
     update: vi.fn(),
+    archive: vi.fn(),
+    unarchive: vi.fn(),
   };
   return fake as unknown as SnippetService & typeof fake;
 }
@@ -145,6 +149,55 @@ describe('createDispatcher', () => {
 
       await expect(
         dispatch({ type: 'snippet:update', payload: { id: 'x', edit: {} } }),
+      ).rejects.toThrow('not found');
+    });
+  });
+
+  describe('snippet:archive', () => {
+    it('routes to snippets.archive with the id', async () => {
+      const snippets = makeFakeService();
+      const archived = { ...fakeSnippet, archivedAt: '2026-05-04T13:00:00.000Z' };
+      snippets.archive.mockResolvedValue(archived);
+      const dispatch = createDispatcher({ snippets });
+
+      const result = await dispatch({ type: 'snippet:archive', payload: { id: 'id-0001' } });
+
+      expect(snippets.archive).toHaveBeenCalledOnce();
+      expect(snippets.archive).toHaveBeenCalledWith('id-0001');
+      expect(result).toEqual(archived);
+    });
+
+    it('propagates rejection from the service', async () => {
+      const snippets = makeFakeService();
+      snippets.archive.mockRejectedValue(new Error('not found'));
+      const dispatch = createDispatcher({ snippets });
+
+      await expect(
+        dispatch({ type: 'snippet:archive', payload: { id: 'x' } }),
+      ).rejects.toThrow('not found');
+    });
+  });
+
+  describe('snippet:unarchive', () => {
+    it('routes to snippets.unarchive with the id', async () => {
+      const snippets = makeFakeService();
+      snippets.unarchive.mockResolvedValue(fakeSnippet);
+      const dispatch = createDispatcher({ snippets });
+
+      const result = await dispatch({ type: 'snippet:unarchive', payload: { id: 'id-0001' } });
+
+      expect(snippets.unarchive).toHaveBeenCalledOnce();
+      expect(snippets.unarchive).toHaveBeenCalledWith('id-0001');
+      expect(result).toEqual(fakeSnippet);
+    });
+
+    it('propagates rejection from the service', async () => {
+      const snippets = makeFakeService();
+      snippets.unarchive.mockRejectedValue(new Error('not found'));
+      const dispatch = createDispatcher({ snippets });
+
+      await expect(
+        dispatch({ type: 'snippet:unarchive', payload: { id: 'x' } }),
       ).rejects.toThrow('not found');
     });
   });

@@ -133,4 +133,175 @@ describe('readSelectionInPage', () => {
 
     expect(readSelectionInPage()).toBeNull();
   });
+
+  describe('context across non-text-node anchors and adjacent nodes', () => {
+    it('captures context when the selection start anchor is an element node', () => {
+      // Range starts at a non-text-node boundary: (p, 1), spanning <img>
+      // and into the following text node.
+      const p = document.createElement('p');
+      const before = document.createTextNode('before');
+      const img = document.createElement('img');
+      const after = document.createTextNode('after the image');
+      p.appendChild(before);
+      p.appendChild(img);
+      p.appendChild(after);
+      document.body.appendChild(p);
+
+      const range = document.createRange();
+      range.setStart(p, 1); // right after `before`, at <img>
+      range.setEnd(after, 5); // mid-after: "after"
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+
+      const result = readSelectionInPage();
+      expect(result).not.toBeNull();
+      // contextBefore should include the "before" text even though the
+      // start anchor is an element node.
+      expect(result?.contextBefore).toBe('before');
+      expect(result?.contextAfter).toBe(' the image');
+    });
+
+    it('captures context when the selection end anchor is an element node', () => {
+      // Range ends at a non-text-node boundary: (p, 2), after <img>.
+      const p = document.createElement('p');
+      const before = document.createTextNode('before the image');
+      const img = document.createElement('img');
+      const after = document.createTextNode('after');
+      p.appendChild(before);
+      p.appendChild(img);
+      p.appendChild(after);
+      document.body.appendChild(p);
+
+      const range = document.createRange();
+      range.setStart(before, 7); // mid-before: "before "
+      range.setEnd(p, 2); // right after <img>
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+
+      const result = readSelectionInPage();
+      expect(result).not.toBeNull();
+      expect(result?.contextBefore).toBe('before ');
+      expect(result?.contextAfter).toBe('after');
+    });
+
+    it('pulls contextBefore from a preceding sibling text node when the entire start text node is selected', () => {
+      const p = document.createElement('p');
+      const a = document.createTextNode('opening words. ');
+      const b = document.createTextNode('SELECTED');
+      const c = document.createTextNode(' closing words.');
+      p.appendChild(a);
+      p.appendChild(b);
+      p.appendChild(c);
+      document.body.appendChild(p);
+
+      // Select the entire middle text node.
+      selectRangeIn(b, 0, b.data.length);
+
+      const result = readSelectionInPage();
+      expect(result?.selectedText).toBe('SELECTED');
+      expect(result?.contextBefore).toBe('opening words. ');
+      expect(result?.contextAfter).toBe(' closing words.');
+    });
+
+    it('skips text inside <style> and <script> tags when gathering context', () => {
+      // <style> in head, <script> sibling — neither should leak into context.
+      const style = document.createElement('style');
+      style.textContent = '.foo { color: red; }';
+      document.body.appendChild(style);
+
+      const script = document.createElement('script');
+      // Don't actually execute — just give it text content.
+      script.textContent = "alert('boom');";
+      document.body.appendChild(script);
+
+      const p = document.createElement('p');
+      const before = document.createTextNode('real content before. ');
+      const sel = document.createTextNode('SELECTED');
+      const after = document.createTextNode(' real content after.');
+      p.appendChild(before);
+      p.appendChild(sel);
+      p.appendChild(after);
+      document.body.appendChild(p);
+
+      selectRangeIn(sel, 0, sel.data.length);
+
+      const result = readSelectionInPage();
+      expect(result?.selectedText).toBe('SELECTED');
+      expect(result?.contextBefore).toBe('real content before. ');
+      expect(result?.contextAfter).toBe(' real content after.');
+      expect(result?.contextBefore).not.toContain('color: red');
+      expect(result?.contextBefore).not.toContain('alert');
+      expect(result?.contextAfter).not.toContain('color: red');
+      expect(result?.contextAfter).not.toContain('alert');
+    });
+
+    it('constrains context to the selection\'s nearest block-level ancestor', () => {
+      // Three sibling paragraphs; select within just the middle one.
+      // Sibling paragraphs MUST NOT leak into context — keeps the
+      // "in context" view focused on the same paragraph.
+      const p1 = document.createElement('p');
+      p1.appendChild(document.createTextNode('first paragraph.'));
+
+      const p2 = document.createElement('p');
+      const t2 = document.createTextNode('middle paragraph');
+      p2.appendChild(t2);
+
+      const p3 = document.createElement('p');
+      p3.appendChild(document.createTextNode('third paragraph.'));
+
+      document.body.appendChild(p1);
+      document.body.appendChild(p2);
+      document.body.appendChild(p3);
+
+      // Select "middle" within the middle paragraph.
+      selectRangeIn(t2, 0, 'middle'.length);
+
+      const result = readSelectionInPage();
+      expect(result?.selectedText).toBe('middle');
+      expect(result?.contextBefore).toBe('');
+      expect(result?.contextAfter).toBe(' paragraph');
+      // Crucially: nothing from sibling paragraphs.
+      expect(result?.contextBefore).not.toContain('first');
+      expect(result?.contextAfter).not.toContain('third');
+    });
+
+    it('walks across siblings when the selection itself spans multiple block elements', () => {
+      // Cross-paragraph selection — commonAncestor climbs to the wrapper,
+      // and context aggregates from siblings within that wrapper.
+      const article = document.createElement('article');
+
+      const p1 = document.createElement('p');
+      const t1 = document.createTextNode('first paragraph.');
+      p1.appendChild(t1);
+
+      const p2 = document.createElement('p');
+      const t2 = document.createTextNode('second paragraph');
+      p2.appendChild(t2);
+
+      const p3 = document.createElement('p');
+      const t3 = document.createTextNode('third paragraph.');
+      p3.appendChild(t3);
+
+      article.appendChild(p1);
+      article.appendChild(p2);
+      article.appendChild(p3);
+      document.body.appendChild(article);
+
+      // Selection: end of "first " through end of "second" — crosses p1→p2.
+      const range = document.createRange();
+      range.setStart(t1, 'first '.length);
+      range.setEnd(t2, 'second'.length);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+
+      const result = readSelectionInPage();
+      expect(result?.contextBefore).toBe('first ');
+      // Context after pulls from rest of p2 then p3 (text-node order).
+      expect(result?.contextAfter).toContain('paragraph');
+      expect(result?.contextAfter).toContain('third paragraph.');
+    });
+  });
 });

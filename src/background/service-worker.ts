@@ -154,6 +154,11 @@ async function handleSaveSelection(tabId?: number): Promise<void> {
       ...(screenshotDataUrl !== undefined && { screenshotDataUrl }),
     });
     console.log(`[mark-my-words] saved snippet ${saved.id}: ${saved.selectedText.slice(0, 60)}`);
+    // Tell any open Library tab so it can update without a refetch. The
+    // typed message bus path (popup/options → SW) emits this in
+    // broadcastSnippetEvent; this path bypasses the dispatcher, so emit
+    // directly.
+    emitSnippetEvent({ type: 'snippet:created', snippet: saved });
     await showToast(resolvedTabId, 'success', 'Snippet saved', saved.id);
   } catch (err) {
     console.error('[mark-my-words] save failed:', err);
@@ -205,21 +210,30 @@ async function showToast(
 }
 
 /**
- * After a snippet mutation, push a SnippetEvent to any open extension
- * pages (e.g. the Library). Errors are suppressed — if no page is
- * listening, sendMessage rejects and we ignore it.
+ * Push a SnippetEvent to any open extension pages (e.g. the Library).
+ * Errors are suppressed — if no page is listening, sendMessage rejects
+ * and we ignore it.
  */
+function emitSnippetEvent(event: SnippetEvent): void {
+  chrome.runtime.sendMessage(event).catch(() => undefined);
+}
+
+/** Translate a dispatcher-handled message into the right SnippetEvent. */
 function broadcastSnippetEvent(msg: Message, value: unknown): void {
   let event: SnippetEvent | null = null;
   if (msg.type === 'snippet:save') {
     event = { type: 'snippet:created', snippet: value as Snippet };
   } else if (msg.type === 'snippet:delete') {
     event = { type: 'snippet:deleted', id: msg.payload.id };
-  } else if (msg.type === 'snippet:update') {
+  } else if (
+    msg.type === 'snippet:update' ||
+    msg.type === 'snippet:archive' ||
+    msg.type === 'snippet:unarchive'
+  ) {
     event = { type: 'snippet:updated', snippet: value as Snippet };
   }
   if (event === null) return;
-  chrome.runtime.sendMessage(event).catch(() => undefined);
+  emitSnippetEvent(event);
 }
 
 function isOpenSnippetRequest(v: unknown): v is { type: 'ui:open-snippet'; id: string } {

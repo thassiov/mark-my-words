@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Repository } from '../storage/repository.js';
 import type { Snippet, SnippetInput } from '../shared/types.js';
 
-import { SnippetService } from './snippet-service.js';
+import { SnippetService, normalizeTags } from './snippet-service.js';
 
 vi.mock('../lib/ulid.js', () => {
   let counter = 0;
@@ -234,9 +234,193 @@ describe('SnippetService', () => {
     });
 
     it('throws when the id does not exist', async () => {
-      await expect(service.update('no-such-id', { selectedText: 'x' })).rejects.toThrow(
+      await expect(service.update('no-such-id', { note: 'x' })).rejects.toThrow(
         'Snippet no-such-id not found',
       );
     });
+  });
+
+  describe('archive / unarchive', () => {
+    it('archive sets archivedAt and bumps updatedAt', async () => {
+      vi.setSystemTime(new Date('2026-05-04T10:00:00Z'));
+      const snippet = await service.save(baseInput);
+
+      vi.setSystemTime(new Date('2026-05-04T11:00:00Z'));
+      const archived = await service.archive(snippet.id);
+
+      expect(archived.archivedAt).toBe('2026-05-04T11:00:00.000Z');
+      expect(archived.updatedAt).toBe('2026-05-04T11:00:00.000Z');
+      expect(archived.createdAt).toBe(snippet.createdAt);
+    });
+
+    it('unarchive clears archivedAt and bumps updatedAt', async () => {
+      vi.setSystemTime(new Date('2026-05-04T10:00:00Z'));
+      const snippet = await service.save(baseInput);
+
+      vi.setSystemTime(new Date('2026-05-04T11:00:00Z'));
+      await service.archive(snippet.id);
+
+      vi.setSystemTime(new Date('2026-05-04T12:00:00Z'));
+      const restored = await service.unarchive(snippet.id);
+
+      expect(restored.archivedAt).toBeUndefined();
+      expect(restored.updatedAt).toBe('2026-05-04T12:00:00.000Z');
+    });
+
+    it('archive on an already-archived snippet is a no-op', async () => {
+      vi.setSystemTime(new Date('2026-05-04T10:00:00Z'));
+      const snippet = await service.save(baseInput);
+
+      vi.setSystemTime(new Date('2026-05-04T11:00:00Z'));
+      const first = await service.archive(snippet.id);
+
+      vi.setSystemTime(new Date('2026-05-04T12:00:00Z'));
+      const second = await service.archive(snippet.id);
+
+      expect(second).toEqual(first);
+      expect(second.archivedAt).toBe('2026-05-04T11:00:00.000Z');
+    });
+
+    it('unarchive on a non-archived snippet is a no-op', async () => {
+      const snippet = await service.save(baseInput);
+      const result = await service.unarchive(snippet.id);
+      expect(result).toEqual(snippet);
+    });
+
+    it('throws when archiving an unknown id', async () => {
+      await expect(service.archive('no-such-id')).rejects.toThrow('Snippet no-such-id not found');
+    });
+
+    it('throws when unarchiving an unknown id', async () => {
+      await expect(service.unarchive('no-such-id')).rejects.toThrow('Snippet no-such-id not found');
+    });
+  });
+
+  describe('list with archived filter', () => {
+    it('default lists only active snippets', async () => {
+      vi.setSystemTime(new Date('2026-05-04T10:00:00Z'));
+      const a = await service.save({ ...baseInput, selectedText: 'a' });
+      const b = await service.save({ ...baseInput, selectedText: 'b' });
+      await service.archive(a.id);
+
+      const result = await service.list();
+      expect(result.map((s) => s.id)).toEqual([b.id]);
+    });
+
+    it('archived: false matches default', async () => {
+      const a = await service.save({ ...baseInput, selectedText: 'a' });
+      await service.save({ ...baseInput, selectedText: 'b' });
+      await service.archive(a.id);
+
+      expect((await service.list({ archived: false })).map((s) => s.selectedText)).toEqual(['b']);
+    });
+
+    it('archived: true returns only archived snippets sorted by archivedAt desc', async () => {
+      vi.setSystemTime(new Date('2026-05-04T10:00:00Z'));
+      const a = await service.save({ ...baseInput, selectedText: 'a' });
+      const b = await service.save({ ...baseInput, selectedText: 'b' });
+
+      vi.setSystemTime(new Date('2026-05-04T11:00:00Z'));
+      await service.archive(b.id);
+      vi.setSystemTime(new Date('2026-05-04T12:00:00Z'));
+      await service.archive(a.id);
+
+      const result = await service.list({ archived: true });
+      // a was archived later → comes first
+      expect(result.map((s) => s.selectedText)).toEqual(['a', 'b']);
+    });
+
+    it('archived: true ignores active snippets', async () => {
+      await service.save({ ...baseInput, selectedText: 'active' });
+      const archived = await service.save({ ...baseInput, selectedText: 'archived' });
+      await service.archive(archived.id);
+
+      const result = await service.list({ archived: true });
+      expect(result.map((s) => s.selectedText)).toEqual(['archived']);
+    });
+
+    it('archive does not affect total count', async () => {
+      const a = await service.save(baseInput);
+      await service.save(baseInput);
+      await service.archive(a.id);
+      expect(await service.count()).toBe(2);
+    });
+  });
+
+  describe('tags', () => {
+    it('save normalizes tags: lowercases, trims, dedupes, drops empty', async () => {
+      const snippet = await service.save({
+        ...baseInput,
+        tags: ['  Foo ', 'BAR', 'foo', '', '   ', 'Bar'],
+      });
+      expect(snippet.tags).toEqual(['foo', 'bar']);
+    });
+
+    it('save with all-empty tags omits the field', async () => {
+      const snippet = await service.save({ ...baseInput, tags: ['  ', ''] });
+      expect(snippet.tags).toBeUndefined();
+    });
+
+    it('save without tags leaves the field absent', async () => {
+      const snippet = await service.save(baseInput);
+      expect(snippet.tags).toBeUndefined();
+    });
+
+    it('update can set tags on a snippet that had none', async () => {
+      const snippet = await service.save(baseInput);
+      const updated = await service.update(snippet.id, { tags: ['react', 'dom'] });
+      expect(updated.tags).toEqual(['react', 'dom']);
+    });
+
+    it('update can replace existing tags', async () => {
+      const snippet = await service.save({ ...baseInput, tags: ['old'] });
+      const updated = await service.update(snippet.id, { tags: ['new', 'shiny'] });
+      expect(updated.tags).toEqual(['new', 'shiny']);
+    });
+
+    it('update with empty tags array clears the field', async () => {
+      const snippet = await service.save({ ...baseInput, tags: ['will', 'be', 'gone'] });
+      const updated = await service.update(snippet.id, { tags: [] });
+      expect(updated.tags).toBeUndefined();
+    });
+
+    it('update with explicit undefined clears the field', async () => {
+      const snippet = await service.save({ ...baseInput, tags: ['gone'] });
+      const updated = await service.update(snippet.id, { tags: undefined });
+      expect(updated.tags).toBeUndefined();
+    });
+
+    it('update without tags key leaves existing tags untouched', async () => {
+      const snippet = await service.save({ ...baseInput, tags: ['kept'] });
+      const updated = await service.update(snippet.id, { note: 'just the note' });
+      expect(updated.tags).toEqual(['kept']);
+      expect(updated.note).toBe('just the note');
+    });
+
+    it('update normalizes tag input', async () => {
+      const snippet = await service.save(baseInput);
+      const updated = await service.update(snippet.id, { tags: [' React ', 'react', 'DOM'] });
+      expect(updated.tags).toEqual(['react', 'dom']);
+    });
+  });
+});
+
+describe('normalizeTags', () => {
+  it('lowercases and trims', () => {
+    expect(normalizeTags(['  Foo  ', 'BAR'])).toEqual(['foo', 'bar']);
+  });
+
+  it('dedupes preserving first-seen order', () => {
+    expect(normalizeTags(['a', 'b', 'A', 'B', 'c'])).toEqual(['a', 'b', 'c']);
+  });
+
+  it('drops empty entries', () => {
+    expect(normalizeTags(['', '   ', '\t', 'real'])).toEqual(['real']);
+  });
+
+  it('returns a fresh array', () => {
+    const input = ['a', 'b'];
+    const out = normalizeTags(input);
+    expect(out).not.toBe(input);
   });
 });

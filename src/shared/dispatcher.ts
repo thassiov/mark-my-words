@@ -45,6 +45,10 @@ export function createDispatcher(deps: DispatcherDeps): Dispatcher {
         return null;
       case 'snippet:update':
         return deps.snippets.update(msg.payload.id, msg.payload.edit);
+      case 'snippet:archive':
+        return deps.snippets.archive(msg.payload.id);
+      case 'snippet:unarchive':
+        return deps.snippets.unarchive(msg.payload.id);
       default: {
         // Exhaustiveness check — fails to compile if a Message variant is missing above.
         const _exhaustive: never = msg;
