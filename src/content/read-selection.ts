@@ -34,8 +34,10 @@ export function readSelectionInPage(): ReadSelectionResult | null {
   const sel = window.getSelection();
   if (sel === null || sel.isCollapsed || sel.rangeCount === 0) return null;
 
-  const text = sel.toString();
-  if (text.trim().length === 0) return null;
+  // Normalize: collapse all whitespace sequences (including \n injected by
+  // replaced elements like <img>) to a single space, then trim.
+  const text = sel.toString().replace(/\s+/g, ' ').trim();
+  if (text.length === 0) return null;
 
   const range = sel.getRangeAt(0);
   const startContainer = range.startContainer;

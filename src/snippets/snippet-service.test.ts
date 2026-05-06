@@ -169,4 +169,74 @@ describe('SnippetService', () => {
       expect(await service.count()).toBe((await service.list()).length);
     });
   });
+
+  describe('delete', () => {
+    it('removes the snippet from the repo', async () => {
+      const snippet = await service.save(baseInput);
+      await service.delete(snippet.id);
+      expect(await repo.getById(snippet.id)).toBeNull();
+    });
+
+    it('reduces count by 1', async () => {
+      const a = await service.save(baseInput);
+      await service.save(baseInput);
+      await service.delete(a.id);
+      expect(await service.count()).toBe(1);
+    });
+
+    it('is a no-op for an unknown id', async () => {
+      await service.save(baseInput);
+      await expect(service.delete('does-not-exist')).resolves.toBeUndefined();
+      expect(await service.count()).toBe(1);
+    });
+  });
+
+  describe('update', () => {
+    it('merges edit fields and bumps updatedAt', async () => {
+      vi.setSystemTime(new Date('2026-05-04T12:00:00Z'));
+      const snippet = await service.save(baseInput);
+
+      vi.setSystemTime(new Date('2026-05-04T13:00:00Z'));
+      const updated = await service.update(snippet.id, { note: 'edited note' });
+
+      expect(updated.note).toBe('edited note');
+      expect(updated.updatedAt).toBe('2026-05-04T13:00:00.000Z');
+      expect(updated.createdAt).toBe(snippet.createdAt);
+    });
+
+    it('persists the update to the repo', async () => {
+      const snippet = await service.save(baseInput);
+      await service.update(snippet.id, { note: 'new note' });
+      const stored = await repo.getById(snippet.id);
+      expect(stored?.note).toBe('new note');
+    });
+
+    it('does not touch immutable provenance fields', async () => {
+      const snippet = await service.save(baseInput);
+      const updated = await service.update(snippet.id, { note: 'a note' });
+      expect(updated.selectedText).toBe(snippet.selectedText);
+      expect(updated.sourceUrl).toBe(snippet.sourceUrl);
+      expect(updated.contextBefore).toBe(snippet.contextBefore);
+      expect(updated.contextAfter).toBe(snippet.contextAfter);
+      expect(updated.pageTitle).toBe(snippet.pageTitle);
+    });
+
+    it('can set note on a snippet that had none', async () => {
+      const snippet = await service.save(baseInput);
+      const updated = await service.update(snippet.id, { note: 'my note' });
+      expect(updated.note).toBe('my note');
+    });
+
+    it('can clear note by passing undefined', async () => {
+      const snippet = await service.save({ ...baseInput, note: 'existing' });
+      const updated = await service.update(snippet.id, { note: undefined });
+      expect(updated.note).toBeUndefined();
+    });
+
+    it('throws when the id does not exist', async () => {
+      await expect(service.update('no-such-id', { selectedText: 'x' })).rejects.toThrow(
+        'Snippet no-such-id not found',
+      );
+    });
+  });
 });

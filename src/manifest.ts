@@ -33,7 +33,6 @@ export const manifest: ManifestV3Export = {
     type: 'module',
   },
   action: {
-    default_popup: 'src/popup/popup.html',
     default_icon: {
       16: 'icons/icon-16.png',
       32: 'icons/icon-32.png',

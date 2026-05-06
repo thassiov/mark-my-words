@@ -11,4 +11,10 @@
  * How long a save-confirmation toast stays fully visible before
  * starting its fade-out. Total perceived duration ≈ this + 200 ms fade.
  */
-export const TOAST_VISIBLE_MS = 3800;
+export const TOAST_VISIBLE_MS = 5000;
+
+/**
+ * Maximum number of characters allowed in a saved selection.
+ * Selections exceeding this are rejected with a toast rather than saved.
+ */
+export const MAX_SELECTION_CHARS = 5000;

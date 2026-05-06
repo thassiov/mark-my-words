@@ -33,7 +33,9 @@ describe('showToastInPage', () => {
   ] as const)('uses the %s color', (variant, expectedBg) => {
     showToastInPage(variant, 'hello', 1000);
     const el = document.getElementById('mmw-toast') as HTMLElement;
-    expect(el.style.background).toContain(variant === 'success' ? '#16a34a' : variant === 'info' ? '#525252' : '#b91c1c');
+    expect(el.style.background).toContain(
+      variant === 'success' ? '#16a34a' : variant === 'info' ? '#525252' : '#b91c1c',
+    );
     expect(expectedBg).toMatch(/^rgb\(/);
   });
 

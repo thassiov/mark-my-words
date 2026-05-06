@@ -134,9 +134,7 @@ async function main() {
   // Strategy 2: any extension page (popup/options/etc.)
   const extPage = targets.find(
     (t) =>
-      t.type === 'page' &&
-      typeof t.url === 'string' &&
-      t.url.startsWith('chrome-extension://'),
+      t.type === 'page' && typeof t.url === 'string' && t.url.startsWith('chrome-extension://'),
   );
   if (extPage) {
     console.log(`→ Reload via extension page: ${extPage.url}`);
@@ -148,9 +146,7 @@ async function main() {
   // Strategy 3: chrome://extensions/ tab → developerPrivate.reload
   const extensionsPage = targets.find(
     (t) =>
-      t.type === 'page' &&
-      typeof t.url === 'string' &&
-      t.url.startsWith('chrome://extensions'),
+      t.type === 'page' && typeof t.url === 'string' && t.url.startsWith('chrome://extensions'),
   );
   if (extensionsPage) {
     console.log(`→ Reload via chrome://extensions/ (looking for "${EXT_NAME}")`);

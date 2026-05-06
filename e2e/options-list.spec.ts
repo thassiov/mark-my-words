@@ -28,10 +28,7 @@ test('list renders seeded snippets newest-first', async ({ context, extensionId 
   await expect(cards.nth(1)).toContainText('oldest snippet body');
 });
 
-test('filter narrows by selectedText, title, and hostname', async ({
-  context,
-  extensionId,
-}) => {
+test('filter narrows by selectedText, title, and hostname', async ({ context, extensionId }) => {
   const page = await openOptionsWith(context, extensionId, [
     makeSnippet({
       createdAt: '2026-02-01T10:00:00.000Z',

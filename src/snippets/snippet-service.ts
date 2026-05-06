@@ -1,7 +1,7 @@
 import { newId } from '../lib/ulid.js';
 import { nowIso } from '../lib/time.js';
 import type { Repository } from '../storage/repository.js';
-import type { Snippet, SnippetInput } from '../shared/types.js';
+import type { Snippet, SnippetEdit, SnippetInput } from '../shared/types.js';
 
 export interface ListOptions {
   /** Max number of items to return. */
@@ -55,5 +55,25 @@ export class SnippetService {
 
   async count(): Promise<number> {
     return this.repo.count();
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.repo.delete(id);
+  }
+
+  async update(id: string, edit: SnippetEdit): Promise<Snippet> {
+    const existing = await this.repo.getById(id);
+    if (existing === null) throw new Error(`Snippet ${id} not found`);
+    const updated: Snippet = { ...existing, updatedAt: nowIso() };
+    // `note` in edit distinguishes explicit `note: undefined` (clear) from key absent (no-op).
+    if ('note' in edit) {
+      if (edit.note === undefined) {
+        delete updated.note;
+      } else {
+        updated.note = edit.note;
+      }
+    }
+    await this.repo.put(updated);
+    return updated;
   }
 }

@@ -15,6 +15,7 @@ export function showToastInPage(
   variant: 'success' | 'info' | 'error',
   message: string,
   visibleMs: number,
+  snippetId?: string,
 ): void {
   const ID = 'mmw-toast';
   const existing = document.getElementById(ID);
@@ -29,26 +30,46 @@ export function showToastInPage(
 
   const el = document.createElement('div');
   el.id = ID;
-  el.textContent = message;
   el.setAttribute('role', 'status');
+
+  const label = document.createElement('span');
+  label.textContent = message;
+  el.appendChild(label);
+
+  if (snippetId !== undefined) {
+    const hint = document.createElement('span');
+    hint.textContent = ' — view →';
+    hint.style.opacity = '0.75';
+    hint.style.fontSize = '12px';
+    el.appendChild(hint);
+  }
+
   Object.assign(el.style, {
     position: 'fixed',
-    top: '16px',
-    right: '16px',
+    top: '20px',
+    right: '20px',
     zIndex: '2147483647',
-    padding: '8px 14px',
+    padding: '12px 18px',
     background: c.bg,
     color: c.fg,
-    borderRadius: '6px',
+    borderRadius: '8px',
     fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: '13px',
+    fontSize: '14px',
     fontWeight: '500',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
     opacity: '0',
     transform: 'translateY(-8px)',
     transition: 'opacity 150ms ease, transform 150ms ease',
-    pointerEvents: 'none',
+    pointerEvents: snippetId !== undefined ? 'auto' : 'none',
+    cursor: snippetId !== undefined ? 'pointer' : 'default',
+    userSelect: 'none',
   });
+
+  if (snippetId !== undefined) {
+    el.addEventListener('click', () => {
+      void chrome.runtime.sendMessage({ type: 'ui:open-snippet', id: snippetId });
+    });
+  }
 
   document.documentElement.appendChild(el);
   // Force reflow so the transition runs.

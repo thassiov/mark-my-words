@@ -15,14 +15,14 @@ Everything lives in the browser profile.
 
 ## Feature set
 
-| Feature | Trigger | Where it happens |
-|---|---|---|
-| Save selection | Right-click → "Save selection as snippet" | Service worker |
-| Save selection (alt) | `Ctrl+Shift+S` while text is selected | Service worker |
-| Save confirmation | Toast injected into the page | Content script |
-| Page snapshot | Captured at save time, JPEG q=70 | `chrome.tabs.captureVisibleTab` |
-| Recent list | Toolbar icon → popup | Popup (Preact) |
-| Browse + filter + detail | Options page (`chrome://extensions/` → Details → Extension options) | Options (Preact) |
+| Feature                  | Trigger                                                             | Where it happens                |
+| ------------------------ | ------------------------------------------------------------------- | ------------------------------- |
+| Save selection           | Right-click → "Save selection as snippet"                           | Service worker                  |
+| Save selection (alt)     | `Ctrl+Shift+S` while text is selected                               | Service worker                  |
+| Save confirmation        | Toast injected into the page                                        | Content script                  |
+| Page snapshot            | Captured at save time, JPEG q=70                                    | `chrome.tabs.captureVisibleTab` |
+| Recent list              | Toolbar icon → popup                                                | Popup (Preact)                  |
+| Browse + filter + detail | Options page (`chrome://extensions/` → Details → Extension options) | Options (Preact)                |
 
 ## High-level component diagram
 
@@ -100,6 +100,7 @@ sequenceDiagram
 ```
 
 Notes:
+
 - The content scripts (`read-selection.ts`, `show-toast.ts`) are
   self-contained — no module imports. They are serialized via
   `Function.prototype.toString` by `chrome.scripting.executeScript`,
@@ -137,12 +138,12 @@ and the screenshot when one exists.
 
 One IndexedDB database, one object store.
 
-| Item | Value |
-|---|---|
-| Database name | `mmw` |
-| Object store | `snippets` |
-| Primary key | `id` (ULID) |
-| Indexes | `createdAt`, `sourceUrl` |
+| Item          | Value                    |
+| ------------- | ------------------------ |
+| Database name | `mmw`                    |
+| Object store  | `snippets`               |
+| Primary key   | `id` (ULID)              |
+| Indexes       | `createdAt`, `sourceUrl` |
 
 The schema is created and managed by Dexie in
 `src/storage/idb-repo.ts`. Other fields (`selectedText`, context,
@@ -176,11 +177,11 @@ Senders use `src/shared/send.ts` which unwraps the envelope and turns
 
 Current messages:
 
-| Type | Returns |
-|---|---|
-| `snippet:save` | `Snippet` |
-| `snippet:list` | `Snippet[]` |
-| `snippet:count` | `number` |
+| Type            | Returns     |
+| --------------- | ----------- |
+| `snippet:save`  | `Snippet`   |
+| `snippet:list`  | `Snippet[]` |
+| `snippet:count` | `number`    |
 
 ## File map
 
@@ -254,10 +255,10 @@ doesn't have to toggle it manually.
 
 ## Testing
 
-| Layer | Tool | Files | Approx. count |
-|---|---|---|---|
-| Unit | Vitest | `src/**/*.test.ts` | 68 tests / 9 files |
-| E2E | Playwright | `e2e/*.spec.ts` | 6 tests / 2 files |
+| Layer | Tool       | Files              | Approx. count      |
+| ----- | ---------- | ------------------ | ------------------ |
+| Unit  | Vitest     | `src/**/*.test.ts` | 68 tests / 9 files |
+| E2E   | Playwright | `e2e/*.spec.ts`    | 6 tests / 2 files  |
 
 Coverage: vitest with the istanbul provider; thresholds 80/80/75/80
 in `vitest.config.ts`. `.tsx` files are excluded from coverage —

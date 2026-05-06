@@ -9,11 +9,15 @@ function makeFakeService(): SnippetService & {
   save: ReturnType<typeof vi.fn>;
   list: ReturnType<typeof vi.fn>;
   count: ReturnType<typeof vi.fn>;
+  delete: ReturnType<typeof vi.fn>;
+  update: ReturnType<typeof vi.fn>;
 } {
   const fake = {
     save: vi.fn(),
     list: vi.fn(),
     count: vi.fn(),
+    delete: vi.fn(),
+    update: vi.fn(),
   };
   return fake as unknown as SnippetService & typeof fake;
 }
@@ -90,6 +94,58 @@ describe('createDispatcher', () => {
 
       expect(snippets.count).toHaveBeenCalledOnce();
       expect(result).toBe(42);
+    });
+  });
+
+  describe('snippet:delete', () => {
+    it('routes to snippets.delete with the id and returns null', async () => {
+      const snippets = makeFakeService();
+      snippets.delete.mockResolvedValue(undefined);
+      const dispatch = createDispatcher({ snippets });
+
+      const result = await dispatch({ type: 'snippet:delete', payload: { id: 'id-0001' } });
+
+      expect(snippets.delete).toHaveBeenCalledOnce();
+      expect(snippets.delete).toHaveBeenCalledWith('id-0001');
+      expect(result).toBeNull();
+    });
+
+    it('propagates rejection from the service', async () => {
+      const snippets = makeFakeService();
+      snippets.delete.mockRejectedValue(new Error('boom'));
+      const dispatch = createDispatcher({ snippets });
+
+      await expect(
+        dispatch({ type: 'snippet:delete', payload: { id: 'id-0001' } }),
+      ).rejects.toThrow('boom');
+    });
+  });
+
+  describe('snippet:update', () => {
+    it('routes to snippets.update with id and edit and returns the updated snippet', async () => {
+      const snippets = makeFakeService();
+      const updated = { ...fakeSnippet, note: 'edited note' };
+      snippets.update.mockResolvedValue(updated);
+      const dispatch = createDispatcher({ snippets });
+
+      const result = await dispatch({
+        type: 'snippet:update',
+        payload: { id: 'id-0001', edit: { note: 'edited note' } },
+      });
+
+      expect(snippets.update).toHaveBeenCalledOnce();
+      expect(snippets.update).toHaveBeenCalledWith('id-0001', { note: 'edited note' });
+      expect(result).toEqual(updated);
+    });
+
+    it('propagates rejection from the service', async () => {
+      const snippets = makeFakeService();
+      snippets.update.mockRejectedValue(new Error('not found'));
+      const dispatch = createDispatcher({ snippets });
+
+      await expect(
+        dispatch({ type: 'snippet:update', payload: { id: 'x', edit: {} } }),
+      ).rejects.toThrow('not found');
     });
   });
 

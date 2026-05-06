@@ -1,4 +1,24 @@
-import type { Snippet, SnippetInput } from './types.js';
+import type { Snippet, SnippetEdit, SnippetInput } from './types.js';
+
+// ---------------------------------------------------------------------------
+// Push events — SW → extension pages (opposite direction to commands)
+// ---------------------------------------------------------------------------
+
+/** Broadcast from the service worker after any snippet mutation. */
+export type SnippetEvent =
+  | { type: 'snippet:created'; snippet: Snippet }
+  | { type: 'snippet:deleted'; id: string }
+  | { type: 'snippet:updated'; snippet: Snippet };
+
+export function isSnippetEvent(v: unknown): v is SnippetEvent {
+  if (typeof v !== 'object' || v === null) return false;
+  const t = (v as Record<string, unknown>)['type'];
+  return t === 'snippet:created' || t === 'snippet:deleted' || t === 'snippet:updated';
+}
+
+// ---------------------------------------------------------------------------
+// Commands — extension pages → SW
+// ---------------------------------------------------------------------------
 
 /**
  * Message envelopes exchanged between extension contexts (content script,
@@ -16,7 +36,9 @@ import type { Snippet, SnippetInput } from './types.js';
 export type Message =
   | { type: 'snippet:save'; payload: SnippetInput }
   | { type: 'snippet:list'; payload?: { limit?: number; offset?: number } }
-  | { type: 'snippet:count' };
+  | { type: 'snippet:count' }
+  | { type: 'snippet:delete'; payload: { id: string } }
+  | { type: 'snippet:update'; payload: { id: string; edit: SnippetEdit } };
 
 /**
  * Maps a message type to its expected response shape.
@@ -27,7 +49,11 @@ export type Response<T extends Message['type']> = T extends 'snippet:save'
     ? Snippet[]
     : T extends 'snippet:count'
       ? number
-      : never;
+      : T extends 'snippet:delete'
+        ? null
+        : T extends 'snippet:update'
+          ? Snippet
+          : never;
 
 /**
  * Runtime-side guard. Cheap structural check; the real type-safety is
@@ -39,5 +65,11 @@ export function isMessage(v: unknown): v is Message {
   const obj = v as Record<string, unknown>;
   const t = obj['type'];
   if (typeof t !== 'string') return false;
-  return t === 'snippet:save' || t === 'snippet:list' || t === 'snippet:count';
+  return (
+    t === 'snippet:save' ||
+    t === 'snippet:list' ||
+    t === 'snippet:count' ||
+    t === 'snippet:delete' ||
+    t === 'snippet:update'
+  );
 }

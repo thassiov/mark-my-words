@@ -45,7 +45,13 @@ export interface Snippet {
 export type SnippetInput = Omit<Snippet, 'id' | 'createdAt' | 'updatedAt'>;
 
 /**
- * Patch shape for editing an existing snippet — only the user-editable
- * fields. Provenance is immutable.
+ * Patch shape for editing an existing snippet. Only {@link Snippet.note}
+ * is user-editable; all other fields are provenance and stay immutable.
+ *
+ * `note` is `string | undefined` (not just `string`) so callers can
+ * explicitly pass `note: undefined` to clear an existing note. This
+ * differs from omitting the key entirely (which leaves the note untouched).
  */
-export type SnippetEdit = Partial<Pick<Snippet, 'selectedText' | 'note'>>;
+export interface SnippetEdit {
+  note?: string | undefined;
+}

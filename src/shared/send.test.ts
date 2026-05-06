@@ -59,7 +59,9 @@ describe('send', () => {
 
   it('rejects when no response is returned (undefined)', async () => {
     sendMessage.mockResolvedValue(undefined);
-    await expect(send({ type: 'snippet:count' })).rejects.toThrow('No response from service worker');
+    await expect(send({ type: 'snippet:count' })).rejects.toThrow(
+      'No response from service worker',
+    );
   });
 
   it('propagates rejection from runtime.sendMessage', async () => {

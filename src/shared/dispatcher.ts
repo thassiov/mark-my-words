@@ -40,6 +40,11 @@ export function createDispatcher(deps: DispatcherDeps): Dispatcher {
         return deps.snippets.list(msg.payload ?? {});
       case 'snippet:count':
         return deps.snippets.count();
+      case 'snippet:delete':
+        await deps.snippets.delete(msg.payload.id);
+        return null;
+      case 'snippet:update':
+        return deps.snippets.update(msg.payload.id, msg.payload.edit);
       default: {
         // Exhaustiveness check — fails to compile if a Message variant is missing above.
         const _exhaustive: never = msg;

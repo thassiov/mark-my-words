@@ -8,11 +8,14 @@
 // return-true + sendResponse pattern fine; that's what we use.
 // Firefox parity (a stretch goal) can re-introduce the polyfill later.
 
-import { TOAST_VISIBLE_MS } from '../config.js';
+import { MAX_SELECTION_CHARS, TOAST_VISIBLE_MS } from '../config.js';
 import { readSelectionInPage } from '../content/read-selection.js';
 import { showToastInPage } from '../content/show-toast.js';
 import type { ToastVariant } from '../content/show-toast.js';
 import { createDispatcher } from '../shared/dispatcher.js';
+import { isMessage } from '../shared/messages.js';
+import type { Message, SnippetEvent } from '../shared/messages.js';
+import type { Snippet } from '../shared/types.js';
 import { SnippetService } from '../snippets/snippet-service.js';
 import { IdbRepo } from '../storage/idb-repo.js';
 
@@ -31,10 +34,22 @@ const dispatch = createDispatcher({ snippets });
 // native Promise resolves with whatever the listener returns; without
 // an envelope, throws on the SW side become silent rejections on the
 // sender side that lose the message.
-chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
-  dispatch(message).then(
+chrome.runtime.onMessage.addListener((raw: unknown, _sender, sendResponse) => {
+  // Handle toast-click navigation requests (not part of the typed message bus).
+  if (isOpenSnippetRequest(raw)) {
+    void chrome.tabs.create({
+      url: `chrome-extension://${chrome.runtime.id}/src/options/options.html#${raw.id}`,
+    });
+    sendResponse(null);
+    return;
+  }
+
+  dispatch(raw).then(
     (value) => {
       sendResponse({ ok: true, value });
+      if (isMessage(raw)) {
+        broadcastSnippetEvent(raw, value);
+      }
     },
     (err: unknown) => {
       const error = err instanceof Error ? err.message : String(err);
@@ -42,6 +57,11 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     },
   );
   return true; // keep the message channel open for the async sendResponse
+});
+
+// Opening the Library directly from the toolbar icon.
+chrome.action.onClicked.addListener(() => {
+  void chrome.runtime.openOptionsPage();
 });
 
 const CONTEXT_MENU_ID = 'mmw-save-snippet';
@@ -83,7 +103,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
  *   - Tab is restricted (chrome://, Web Store, etc.) → executeScript
  *     rejects; we log and bail.
  *   - Empty selection → reader returns null → no-op.
- *   - Save throws → log. (Toast UI lands in MARK-10.)
+ *   - Save throws → log and show error toast.
  */
 async function handleSaveSelection(tabId?: number): Promise<void> {
   let resolvedTabId = tabId;
@@ -117,6 +137,12 @@ async function handleSaveSelection(tabId?: number): Promise<void> {
     return;
   }
 
+  if (result.selectedText.length > MAX_SELECTION_CHARS) {
+    console.log(`[mark-my-words] selection too large (${String(result.selectedText.length)} chars)`);
+    await showToast(resolvedTabId, 'info', 'Selection too large — try selecting less text');
+    return;
+  }
+
   // Capture screenshot BEFORE save so the toast/save flow doesn't
   // visually interfere with the page (toast injection happens later in
   // both the save-success and save-error branches).
@@ -128,7 +154,7 @@ async function handleSaveSelection(tabId?: number): Promise<void> {
       ...(screenshotDataUrl !== undefined && { screenshotDataUrl }),
     });
     console.log(`[mark-my-words] saved snippet ${saved.id}: ${saved.selectedText.slice(0, 60)}`);
-    await showToast(resolvedTabId, 'success', 'Snippet saved');
+    await showToast(resolvedTabId, 'success', 'Snippet saved', saved.id);
   } catch (err) {
     console.error('[mark-my-words] save failed:', err);
     const msg = err instanceof Error ? err.message : 'unknown error';
@@ -145,8 +171,7 @@ async function handleSaveSelection(tabId?: number): Promise<void> {
  * (chrome://, Web Store, etc.).
  *
  * Quality 70 / JPEG keeps each capture under ~150 KB on typical
- * desktop viewports. Good enough for v0 against `chrome.storage.local`;
- * the storage migration to IDB lets us go higher if we want.
+ * desktop viewports.
  */
 async function captureScreenshot(): Promise<string | undefined> {
   try {
@@ -162,14 +187,43 @@ async function captureScreenshot(): Promise<string | undefined> {
  * pages, missing tab) are swallowed — a missing toast is annoying but
  * not a real failure mode.
  */
-async function showToast(tabId: number, variant: ToastVariant, message: string): Promise<void> {
+async function showToast(
+  tabId: number,
+  variant: ToastVariant,
+  message: string,
+  snippetId?: string,
+): Promise<void> {
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
       func: showToastInPage,
-      args: [variant, message, TOAST_VISIBLE_MS],
+      args: [variant, message, TOAST_VISIBLE_MS, snippetId],
     });
   } catch (err) {
     console.warn('[mark-my-words] toast inject failed:', err);
   }
+}
+
+/**
+ * After a snippet mutation, push a SnippetEvent to any open extension
+ * pages (e.g. the Library). Errors are suppressed — if no page is
+ * listening, sendMessage rejects and we ignore it.
+ */
+function broadcastSnippetEvent(msg: Message, value: unknown): void {
+  let event: SnippetEvent | null = null;
+  if (msg.type === 'snippet:save') {
+    event = { type: 'snippet:created', snippet: value as Snippet };
+  } else if (msg.type === 'snippet:delete') {
+    event = { type: 'snippet:deleted', id: msg.payload.id };
+  } else if (msg.type === 'snippet:update') {
+    event = { type: 'snippet:updated', snippet: value as Snippet };
+  }
+  if (event === null) return;
+  chrome.runtime.sendMessage(event).catch(() => undefined);
+}
+
+function isOpenSnippetRequest(v: unknown): v is { type: 'ui:open-snippet'; id: string } {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return o['type'] === 'ui:open-snippet' && typeof o['id'] === 'string';
 }
