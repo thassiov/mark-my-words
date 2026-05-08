@@ -1,30 +1,47 @@
 /**
+ * Args for {@link showSaveCardInPage}. Defined at module scope (type-only)
+ * so the SW can import the shape; the runtime values are passed through
+ * `chrome.scripting.executeScript({ args: [...] })`.
+ */
+export interface SaveCardArgs {
+  snippetId: string;
+  /** Tags currently on the snippet. Empty on initial save; non-empty when re-opening. */
+  currentTags: readonly string[];
+  /** Note currently on the snippet. Empty on initial save. */
+  currentNote: string;
+  /** All tags across the user's library, used to populate the suggestions row. */
+  allTags: readonly string[];
+  /** Auto-dismiss budget for page 1 idle. Cancelled once the user engages. */
+  visibleMs: number;
+}
+
+/**
  * Multi-page "save card" overlay shown in the page after a successful save.
  *
  * **No module imports.** Shipped to the page context via
- * `chrome.scripting.executeScript({ func: showSaveCardInPage, args: [...] })`.
+ * `chrome.scripting.executeScript({ func: showSaveCardInPage, args: [args] })`.
  * Anything referenced at runtime must be available in that context
  * (DOM globals are fine; closures over module-scope vars are not). For
  * the same reason, the inner builders cannot be hoisted to module scope —
- * the serialized function body would lose its references.
+ * the serialized function body would lose its references. Putting CSS at
+ * module scope was a real bug for the same reason: the bundler left it
+ * as a free variable in the serialized function source, throwing
+ * ReferenceError in the page context.
  *
  * Lives inside a closed Shadow DOM so neither the host page's CSS bleeds
  * in nor our styles leak out. CSS is delivered via a constructable
  * stylesheet (adoptedStyleSheets) so a strict page CSP `style-src`
  * does not block us.
  *
- * SKELETON STATUS: page navigation, ESC, hover/focus dismiss-cancel, and
- * View → are wired. Tag/note edits are preview-only — Done/Save/Cancel
- * just navigate back without persisting. The chip remove/add and
- * suggestion-click behaviors mutate the DOM only.
+ * Three pages: idle (page 1) → tags (page 2) / note (page 3). Done/Save
+ * fire `snippet:update` optimistically and return to page 1 with the
+ * row label flipped to reflect the saved state.
  */
-/* eslint-disable max-lines-per-function, max-statements, unicorn/consistent-function-scoping --
-   the executeScript({func}) injection model forbids module-scope captures; ALL values
-   referenced by the serialized function — helpers, CSS string, constants — must live
-   inside the function body. Putting CSS at module scope was a real bug: the bundler
-   leaves it as a free variable in the serialized function source, throwing
-   ReferenceError in the page context. */
-export function showSaveCardInPage(snippetId: string, visibleMs: number): void {
+/* eslint-disable max-lines-per-function, max-statements --
+   helpers and constants must live inside the function body to survive
+   executeScript serialization (see top docstring). */
+export function showSaveCardInPage(args: SaveCardArgs): void {
+  const { snippetId, currentTags, currentNote, allTags, visibleMs } = args;
   const HOST_ID = 'mmw-save-card-host';
   document.querySelector(`#${HOST_ID}`)?.remove();
 
@@ -171,10 +188,29 @@ export function showSaveCardInPage(snippetId: string, visibleMs: number): void {
 `;
 
   // ------------------------------------------------------------------
-  // Mock content (replaced by real args once behavior is wired)
+  // Initial content (from args)
   // ------------------------------------------------------------------
-  const initialChips = ['design', 'ux'];
-  const suggestions = ['api', 'react', 'backend', 'design-system', 'frontend', 'perf'];
+  const SUGGESTION_CAP = 8;
+  const initialChips = [...currentTags];
+  // Suggestions exclude tags already on the snippet so we never show a
+  // suggestion that would no-op when clicked.
+  const applied = new Set(initialChips);
+  const suggestions = allTags.filter((t) => !applied.has(t)).slice(0, SUGGESTION_CAP);
+
+  // Last-saved state. Drives the page-1 row labels. Updated only on
+  // Done/Save click — the in-DOM chip set and textarea value are the
+  // working draft and may diverge from this until committed.
+  let savedTagCount = currentTags.length;
+  let noteSaved = currentNote.length > 0;
+
+  // Refs into page 1, populated by buildPage1, mutated by syncRowLabels.
+  let tagRow: HTMLElement;
+  let noteRow: HTMLElement;
+
+  // Auto-dismiss handle. Declared up here because `showPage('1')` runs
+  // before the bottom of the function body and (transitively) reads it
+  // — declaring lower would put it in the temporal dead zone.
+  let dismissTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ------------------------------------------------------------------
   // Host + shadow root
@@ -187,7 +223,10 @@ export function showSaveCardInPage(snippetId: string, visibleMs: number): void {
     right: '16px',
     zIndex: '2147483647',
   });
-  const shadow = host.attachShadow({ mode: 'closed' });
+  // Open mode: same CSS isolation as closed, but dev-tools inspection
+  // and tests can reach in via `host.shadowRoot`. The real isolation we
+  // care about is the CSS one, which is identical across modes.
+  const shadow = host.attachShadow({ mode: 'open' });
 
   const sheet = new CSSStyleSheet();
   sheet.replaceSync(CSS);
@@ -203,6 +242,7 @@ export function showSaveCardInPage(snippetId: string, visibleMs: number): void {
   shadow.append(card);
 
   card.append(buildPage1(), buildPage2(), buildPage3());
+  syncRowLabels();
 
   document.documentElement.append(host);
 
@@ -233,15 +273,13 @@ export function showSaveCardInPage(snippetId: string, visibleMs: number): void {
     });
     header.append(status, view);
 
-    page.append(
-      header,
-      buildRowButton('🏷', 'Tag it', () => {
-        showPage('2');
-      }),
-      buildRowButton('✎', 'Add a note', () => {
-        showPage('3');
-      }),
-    );
+    tagRow = buildRowButton('🏷', 'Tag it', () => {
+      showPage('2');
+    });
+    noteRow = buildRowButton('✎', 'Add a note', () => {
+      showPage('3');
+    });
+    page.append(header, tagRow, noteRow);
     return page;
   }
 
@@ -303,7 +341,10 @@ export function showSaveCardInPage(snippetId: string, visibleMs: number): void {
     done.type = 'button';
     done.textContent = 'Done';
     done.addEventListener('click', () => {
-      // Skeleton: no persistence. Just go back.
+      const tags = collectChipTags(chipBox);
+      sendUpdate({ tags });
+      savedTagCount = tags.length;
+      syncRowLabels();
       showPage('1');
     });
     footer.append(done);
@@ -323,6 +364,7 @@ export function showSaveCardInPage(snippetId: string, visibleMs: number): void {
     ta.className = 'note-text';
     ta.placeholder = 'Worth referencing later…';
     ta.rows = 4;
+    ta.value = currentNote;
     page.append(ta);
 
     const footer = document.createElement('div');
@@ -332,7 +374,8 @@ export function showSaveCardInPage(snippetId: string, visibleMs: number): void {
     cancel.type = 'button';
     cancel.textContent = 'Cancel';
     cancel.addEventListener('click', () => {
-      ta.value = '';
+      // Discard the working draft, restore to last-saved.
+      ta.value = currentNote;
       showPage('1');
     });
     const save = document.createElement('button');
@@ -340,7 +383,10 @@ export function showSaveCardInPage(snippetId: string, visibleMs: number): void {
     save.type = 'button';
     save.textContent = 'Save';
     save.addEventListener('click', () => {
-      // Skeleton: no persistence. Just go back.
+      const note = ta.value;
+      sendUpdate({ note });
+      noteSaved = note.length > 0;
+      syncRowLabels();
       showPage('1');
     });
     footer.append(cancel, save);
@@ -396,6 +442,7 @@ export function showSaveCardInPage(snippetId: string, visibleMs: number): void {
   function buildChip(text: string): HTMLElement {
     const chip = document.createElement('span');
     chip.className = 'chip';
+    chip.dataset['tag'] = text;
     const label = document.createElement('span');
     label.textContent = text;
     const x = document.createElement('button');
@@ -408,6 +455,58 @@ export function showSaveCardInPage(snippetId: string, visibleMs: number): void {
     });
     chip.append(label, x);
     return chip;
+  }
+
+  /**
+   * Reflect the last-saved state in the page-1 row labels. Called on
+   * mount and after every successful Done/Save.
+   */
+  function syncRowLabels(): void {
+    if (savedTagCount > 0) {
+      const plural = savedTagCount === 1 ? '' : 's';
+      setRowLabel(tagRow, '✓', `${String(savedTagCount)} tag${plural}`);
+    } else {
+      setRowLabel(tagRow, '🏷', 'Tag it');
+    }
+    if (noteSaved) {
+      setRowLabel(noteRow, '✓', 'Note added');
+    } else {
+      setRowLabel(noteRow, '✎', 'Add a note');
+    }
+  }
+
+  function setRowLabel(row: HTMLElement, icon: string, label: string): void {
+    const iconEl = row.querySelector<HTMLElement>('.row-icon');
+    const labelEl = row.querySelector<HTMLElement>('.row-label');
+    if (iconEl) iconEl.textContent = icon;
+    if (labelEl) labelEl.textContent = label;
+  }
+
+  function collectChipTags(chipBox: HTMLElement): string[] {
+    const out: string[] = [];
+    for (const el of chipBox.querySelectorAll<HTMLElement>('.chip')) {
+      const t = el.dataset['tag'];
+      if (typeof t === 'string' && t.length > 0) out.push(t);
+    }
+    return out;
+  }
+
+  /**
+   * Fire-and-forget snippet:update. Optimistic UI — we navigate away
+   * before the response, so failures are logged for diagnostics rather
+   * than rolled back. Wrapped to suppress unhandled-rejection noise.
+   */
+  function sendUpdate(edit: { tags?: string[]; note?: string }): void {
+    void chrome.runtime
+      .sendMessage({ type: 'snippet:update', payload: { id: snippetId, edit } })
+      .then((res: unknown) => {
+        if (typeof res === 'object' && res !== null && (res as { ok?: unknown }).ok === false) {
+          console.warn('[mark-my-words] save-card update rejected:', res);
+        }
+      })
+      .catch((err: unknown) => {
+        console.warn('[mark-my-words] save-card update failed:', err);
+      });
   }
 
   // ------------------------------------------------------------------
@@ -432,7 +531,6 @@ export function showSaveCardInPage(snippetId: string, visibleMs: number): void {
     }
   }
 
-  let dismissTimer: ReturnType<typeof setTimeout> | null = null;
   function startDismissTimer(): void {
     cancelDismissTimer();
     dismissTimer = setTimeout(dismiss, visibleMs);

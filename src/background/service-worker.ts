@@ -12,6 +12,7 @@ import pkg from '../../package.json' with { type: 'json' };
 import { MAX_SELECTION_CHARS, TOAST_VISIBLE_MS } from '../config.js';
 import { readSelectionInPage } from '../content/read-selection.js';
 import { showSaveCardInPage } from '../content/save-card.js';
+import type { SaveCardArgs } from '../content/save-card.js';
 import { showToastInPage } from '../content/show-toast.js';
 import type { ToastVariant } from '../content/show-toast.js';
 import { errorMessage } from '../lib/error.js';
@@ -64,7 +65,6 @@ chrome.action.onClicked.addListener(() => {
 });
 
 const CONTEXT_MENU_ID = 'mmw-save-snippet';
-const CONTEXT_MENU_PREVIEW_CARD_ID = 'mmw-preview-save-card';
 
 // Re-create the context menu on every SW boot. `removeAll` + `create` is
 // idempotent: it works whether the menu was already there (from a prior
@@ -76,12 +76,6 @@ chrome.contextMenus.removeAll(() => {
     id: CONTEXT_MENU_ID,
     title: 'Save selection as snippet',
     contexts: ['selection'],
-  });
-  // Dev-only: preview the new save card on any page without doing a real save.
-  chrome.contextMenus.create({
-    id: CONTEXT_MENU_PREVIEW_CARD_ID,
-    title: 'Preview save card (dev)',
-    contexts: ['page'],
   });
 });
 
@@ -95,31 +89,9 @@ chrome.commands.onCommand.addListener((command) => {
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === CONTEXT_MENU_ID) {
-    void handleSaveSelection(tab?.id);
-    return;
-  }
-  if (info.menuItemId === CONTEXT_MENU_PREVIEW_CARD_ID && tab?.id !== undefined) {
-    void previewSaveCard(tab.id);
-  }
+  if (info.menuItemId !== CONTEXT_MENU_ID) return;
+  void handleSaveSelection(tab?.id);
 });
-
-/**
- * Inject the new save card with mock data into a tab. Dev-only path
- * for iterating on the card's look + transitions before behavior is
- * wired into the real save flow.
- */
-async function previewSaveCard(tabId: number): Promise<void> {
-  try {
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      func: showSaveCardInPage,
-      args: ['preview', TOAST_VISIBLE_MS],
-    });
-  } catch (error) {
-    console.warn('[mark-my-words] save-card preview inject failed:', error);
-  }
-}
 
 /**
  * Inject {@link readSelectionInPage} into the given tab (or the active
@@ -189,12 +161,36 @@ async function handleSaveSelection(tabId?: number): Promise<void> {
     // broadcastSnippetEvent; this path bypasses the dispatcher, so emit
     // directly.
     emitSnippetEvent({ type: 'snippet:created', snippet: saved });
-    await showToast(resolvedTabId, 'success', 'Snippet saved', saved.id);
+    await presentSavedCard(resolvedTabId, saved);
   } catch (error) {
     console.error('[mark-my-words] save failed:', error);
     const msg = error instanceof Error ? error.message : 'unknown error';
     await showToast(resolvedTabId, 'error', `Save failed: ${msg}`);
   }
+}
+
+/** Compose card args from a freshly saved snippet and inject the card. */
+async function presentSavedCard(tabId: number, saved: Snippet): Promise<void> {
+  const allTags = await collectAllTags();
+  await showCard(tabId, {
+    snippetId: saved.id,
+    currentTags: saved.tags ?? [],
+    currentNote: saved.note ?? '',
+    allTags,
+    visibleMs: TOAST_VISIBLE_MS,
+  });
+}
+
+/**
+ * Compute the union of tags across all (non-archived) snippets, sorted
+ * alphabetically. Mirrors the options-page `allTags` derivation so the
+ * suggestions row in the save card matches what the Library shows.
+ */
+async function collectAllTags(): Promise<string[]> {
+  const all = await snippets.list({ archived: false });
+  const set = new Set<string>();
+  for (const s of all) for (const t of s.tags ?? []) set.add(t);
+  return [...set].toSorted();
 }
 
 /**
@@ -218,9 +214,10 @@ async function captureScreenshot(): Promise<string | undefined> {
 }
 
 /**
- * Inject the toast helper into the given tab. Failures (restricted
- * pages, missing tab) are swallowed — a missing toast is annoying but
- * not a real failure mode.
+ * Inject the toast helper into the given tab. Used for info/error paths
+ * (Nothing selected, Selection too large, Save failed) — the success
+ * path uses {@link showCard} instead. Failures (restricted pages, missing
+ * tab) are swallowed.
  */
 async function showToast(
   tabId: number,
@@ -236,6 +233,23 @@ async function showToast(
     });
   } catch (error) {
     console.warn('[mark-my-words] toast inject failed:', error);
+  }
+}
+
+/**
+ * Inject the multi-page save card. Used on save success — replaces the
+ * old single-line success toast. Failures swallowed for the same reason
+ * as `showToast`.
+ */
+async function showCard(tabId: number, args: SaveCardArgs): Promise<void> {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: showSaveCardInPage,
+      args: [args],
+    });
+  } catch (error) {
+    console.warn('[mark-my-words] save-card inject failed:', error);
   }
 }
 
