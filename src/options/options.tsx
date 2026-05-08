@@ -463,12 +463,12 @@ function SnippetDetail({ snippet, onClose, onDeleted, onUpdated, onTagClick }: D
           </section>
         ) : null}
 
-        {!editing && tags.length > 0 ? (
+        {editing ? null : (
           <section>
             <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
               Tags
             </h2>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               {tags.map((t) => (
                 <TagChip
                   key={t}
@@ -476,11 +476,21 @@ function SnippetDetail({ snippet, onClose, onDeleted, onUpdated, onTagClick }: D
                   onClick={() => {
                     onTagClick(t);
                   }}
+                  onRemove={() => {
+                    void send({
+                      type: 'snippet:update',
+                      payload: {
+                        id: snippet.id,
+                        edit: { tags: tags.filter((x) => x !== t) },
+                      },
+                    });
+                  }}
                 />
               ))}
+              <TagAdder snippet={snippet} />
             </div>
           </section>
-        ) : null}
+        )}
 
         {!editing && (snippet.contextBefore || snippet.contextAfter) ? (
           <section>
@@ -665,10 +675,15 @@ function LibrarySection({ archived }: LibrarySectionProps) {
   );
 
   useEffect(() => {
+    // Wait for the initial fetch — otherwise a hash-derived selectedId
+    // (deep-link from the save card's View →) gets cleared while
+    // `filtered` is still empty during load, and the detail pane never
+    // opens.
+    if (snippets === null) return;
     if (selectedId !== null && !filtered.some((s) => s.id === selectedId)) {
       setSelectedId(null);
     }
-  }, [filtered, selectedId]);
+  }, [snippets, filtered, selectedId]);
 
   function handleDeleted(id: string) {
     setSnippets((prev) => prev?.filter((s) => s.id !== id) ?? null);
@@ -780,19 +795,20 @@ function LibrarySection({ archived }: LibrarySectionProps) {
                 <p className="line-clamp-3 text-sm leading-relaxed text-gray-900">
                   {s.selectedText}
                 </p>
-                <div className="mt-2 flex flex-wrap items-center gap-1">
-                  {(s.tags ?? []).map((t) => (
-                    <TagChip
-                      key={t}
-                      tag={t}
-                      active={t === activeTag}
-                      onClick={() => {
-                        setActiveTag(t === activeTag ? null : t);
-                      }}
-                    />
-                  ))}
-                  <TagAdder snippet={s} />
-                </div>
+                {(s.tags ?? []).length > 0 ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-1">
+                    {(s.tags ?? []).map((t) => (
+                      <TagChip
+                        key={t}
+                        tag={t}
+                        active={t === activeTag}
+                        onClick={() => {
+                          setActiveTag(t === activeTag ? null : t);
+                        }}
+                      />
+                    ))}
+                  </div>
+                ) : null}
                 <div className="mt-3 flex items-center justify-between gap-3 text-xs text-gray-500">
                   <a
                     href={s.sourceUrl}

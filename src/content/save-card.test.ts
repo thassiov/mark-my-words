@@ -16,11 +16,9 @@ function defaults(overrides: Partial<SaveCardArgs> = {}): SaveCardArgs {
 }
 
 function root(): ShadowRoot {
-  const host = document.querySelector<HTMLElement>(HOST_ID);
-  if (host === null || host.shadowRoot === null) {
-    throw new Error('host or shadowRoot not found');
-  }
-  return host.shadowRoot;
+  const shadow = document.querySelector<HTMLElement>(HOST_ID)?.shadowRoot;
+  if (!shadow) throw new Error('host or shadowRoot not found');
+  return shadow;
 }
 
 function activePage(): HTMLElement {
