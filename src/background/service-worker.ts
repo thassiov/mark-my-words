@@ -11,6 +11,7 @@
 import pkg from '../../package.json' with { type: 'json' };
 import { MAX_SELECTION_CHARS, TOAST_VISIBLE_MS } from '../config.js';
 import { readSelectionInPage } from '../content/read-selection.js';
+import { showSaveCardInPage } from '../content/save-card.js';
 import { showToastInPage } from '../content/show-toast.js';
 import type { ToastVariant } from '../content/show-toast.js';
 import { errorMessage } from '../lib/error.js';
@@ -63,6 +64,7 @@ chrome.action.onClicked.addListener(() => {
 });
 
 const CONTEXT_MENU_ID = 'mmw-save-snippet';
+const CONTEXT_MENU_PREVIEW_CARD_ID = 'mmw-preview-save-card';
 
 // Re-create the context menu on every SW boot. `removeAll` + `create` is
 // idempotent: it works whether the menu was already there (from a prior
@@ -74,6 +76,12 @@ chrome.contextMenus.removeAll(() => {
     id: CONTEXT_MENU_ID,
     title: 'Save selection as snippet',
     contexts: ['selection'],
+  });
+  // Dev-only: preview the new save card on any page without doing a real save.
+  chrome.contextMenus.create({
+    id: CONTEXT_MENU_PREVIEW_CARD_ID,
+    title: 'Preview save card (dev)',
+    contexts: ['page'],
   });
 });
 
@@ -87,9 +95,31 @@ chrome.commands.onCommand.addListener((command) => {
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId !== CONTEXT_MENU_ID) return;
-  void handleSaveSelection(tab?.id);
+  if (info.menuItemId === CONTEXT_MENU_ID) {
+    void handleSaveSelection(tab?.id);
+    return;
+  }
+  if (info.menuItemId === CONTEXT_MENU_PREVIEW_CARD_ID && tab?.id !== undefined) {
+    void previewSaveCard(tab.id);
+  }
 });
+
+/**
+ * Inject the new save card with mock data into a tab. Dev-only path
+ * for iterating on the card's look + transitions before behavior is
+ * wired into the real save flow.
+ */
+async function previewSaveCard(tabId: number): Promise<void> {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: showSaveCardInPage,
+      args: ['preview', TOAST_VISIBLE_MS],
+    });
+  } catch (error) {
+    console.warn('[mark-my-words] save-card preview inject failed:', error);
+  }
+}
 
 /**
  * Inject {@link readSelectionInPage} into the given tab (or the active
