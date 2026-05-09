@@ -44,30 +44,12 @@ function ArchivedPill() {
 }
 
 /**
- * Small uppercase pill identifying a Page record in its card footer.
- * Selections show a word count in the same slot; pages get this pill
- * so the footer stays visually balanced across both kinds.
+ * Muted ellipsis used to indicate "more before" / "more after" on a
+ * card's title and excerpt. Different color from the body text so the
+ * reader registers it as a UI cue, not part of the content.
  */
-function PageBadge() {
-  return (
-    <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
-      Page
-    </span>
-  );
-}
-
-/**
- * Top-right corner badge with the relative timestamp of the record,
- * uppercase and dark-on-warm. Inspired by uiverse's hungry-rattlesnake
- * date corner, adapted to a horizontal pill since "3 DAYS AGO" needs
- * the room.
- */
-function DateBadge({ iso }: { iso: string }) {
-  return (
-    <span className="inline-flex flex-shrink-0 items-center rounded-full bg-stone-900 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-50">
-      {formatRelative(iso)}
-    </span>
-  );
+function MoreEllipsis() {
+  return <span className="text-stone-400">…</span>;
 }
 
 /**
@@ -118,6 +100,35 @@ function wordCount(text: string): number {
   return trimmed.split(/\s+/).length;
 }
 
+/**
+ * Render the card title with a muted trailing-ellipsis when the
+ * `selectedText`/`pageTitle` is longer than what fits in the title
+ * slot. Selections are wrapped in typographic quotes; pages render
+ * bare. The ellipsis lands inside the quotes for selections so it
+ * reads as part of the truncation, not as part of the quote.
+ */
+function renderCardTitle(
+  type: 'selection' | 'page',
+  first: string,
+  hasMore: boolean,
+): ComponentChildren {
+  const tail = hasMore ? <MoreEllipsis /> : null;
+  if (type === 'selection') {
+    return (
+      <>
+        “{first}
+        {tail}”
+      </>
+    );
+  }
+  return (
+    <>
+      {first}
+      {tail}
+    </>
+  );
+}
+
 interface CardProps {
   record: Record;
   isSelected: boolean;
@@ -129,10 +140,12 @@ interface CardProps {
 
 /**
  * Library list card. Inspired by uiverse's chilly-bird-79 (overall
- * rhythm: top row → title → continuation → meta) and
- * hungry-rattlesnake-3 (date corner badge). Type is conveyed by a
- * 3px left-edge stripe — blue for selection, emerald for page —
- * instead of a separate badge in the body.
+ * rhythm: top row → title → continuation → meta). Type is conveyed by
+ * a 3px left-edge stripe — blue for selection, emerald for page — and
+ * by the type label in the footer ("Selection: N words" / "Page").
+ *
+ * Top row: favicon + hostname | page title (truncated to fit).
+ * Footer: type info on the left, relative date on the right.
  */
 function Card({ record, isSelected, archived, activeTag, onClick, onTagClick }: CardProps) {
   const dateIso =
@@ -142,39 +155,51 @@ function Card({ record, isSelected, archived, activeTag, onClick, onTagClick }: 
     ? 'bg-amber-100 shadow-md'
     : 'bg-amber-50/70 hover:-translate-y-0.5 hover:bg-amber-100/60 hover:shadow-md';
 
-  const title =
+  const split =
     record.type === 'selection'
-      ? splitForCard(record.selectedText, 60).first
-      : record.pageTitle || hostnameOf(record.sourceUrl);
-  const excerpt = record.type === 'selection' ? splitForCard(record.selectedText, 60).rest : '';
+      ? splitForCard(record.selectedText, 60)
+      : { first: record.pageTitle || hostnameOf(record.sourceUrl), rest: '' };
 
   return (
     <article
       onClick={onClick}
-      className={`relative flex cursor-pointer flex-col overflow-hidden rounded-2xl py-5 pl-6 pr-5 transition-all duration-150 ${surface}`}
+      className={`relative flex cursor-pointer flex-col overflow-hidden rounded-2xl py-4 pl-5 pr-4 transition-all duration-150 ${surface}`}
     >
       <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-[3px] ${stripe}`} />
 
-      <header className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <Favicon sourceUrl={record.sourceUrl} />
-          <span className="truncate text-xs font-medium text-stone-600" title={record.sourceUrl}>
-            {hostnameOf(record.sourceUrl)}
-          </span>
-        </div>
-        <DateBadge iso={dateIso} />
+      <header className="flex min-w-0 items-center gap-2">
+        <Favicon sourceUrl={record.sourceUrl} />
+        <span
+          className="min-w-0 flex-1 truncate text-xs text-stone-600"
+          title={
+            record.pageTitle
+              ? `${hostnameOf(record.sourceUrl)} | ${record.pageTitle}`
+              : record.sourceUrl
+          }
+        >
+          <span className="font-medium">{hostnameOf(record.sourceUrl)}</span>
+          {record.pageTitle ? (
+            <>
+              <span className="px-1 text-stone-400">|</span>
+              <span>{record.pageTitle}</span>
+            </>
+          ) : null}
+        </span>
       </header>
 
-      <h3 className="mt-5 line-clamp-2 text-[19px] font-extrabold leading-tight text-stone-900">
-        {record.type === 'selection' ? `“${title}”` : title}
+      <h3 className="mt-4 line-clamp-2 text-[17px] font-extrabold leading-tight text-stone-900">
+        {renderCardTitle(record.type, split.first, split.rest.length > 0)}
       </h3>
 
-      {excerpt.length > 0 ? (
-        <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-stone-700">{excerpt}</p>
+      {split.rest.length > 0 ? (
+        <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-stone-700">
+          <MoreEllipsis />
+          {split.rest}
+        </p>
       ) : null}
 
       {(record.tags ?? []).length > 0 ? (
-        <div className="mt-4 flex flex-wrap items-center gap-1">
+        <div className="mt-3 flex flex-wrap items-center gap-1">
           {(record.tags ?? []).map((t) => (
             <TagChip
               key={t}
@@ -188,13 +213,16 @@ function Card({ record, isSelected, archived, activeTag, onClick, onTagClick }: 
         </div>
       ) : null}
 
-      <footer className="mt-auto flex items-center gap-2 pt-5 text-xs font-medium text-stone-600">
-        {record.type === 'selection' ? (
-          <span>{wordCount(record.selectedText)} words</span>
-        ) : (
-          <PageBadge />
-        )}
-        {archived ? <ArchivedPill /> : null}
+      <footer className="mt-auto flex items-center justify-between gap-2 pt-4 text-xs font-medium text-stone-600">
+        <span className="flex items-center gap-2">
+          {record.type === 'selection' ? (
+            <span>Selection: {wordCount(record.selectedText)} words</span>
+          ) : (
+            <span>Page</span>
+          )}
+          {archived ? <ArchivedPill /> : null}
+        </span>
+        <span className="text-stone-500">{formatRelative(dateIso)}</span>
       </footer>
     </article>
   );
@@ -1004,7 +1032,7 @@ function LibrarySection({ archived }: LibrarySectionProps) {
         <p className="text-sm text-gray-500">No matches for &quot;{query}&quot;.</p>
       ) : null}
 
-      <div className="grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 items-stretch gap-6 sm:grid-cols-2 xl:grid-cols-3">
         {filtered.map((s) => {
           const isSelected = s.id === selectedId;
           return (
