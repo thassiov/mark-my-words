@@ -3,9 +3,9 @@ import { useEffect, useState } from 'preact/hooks';
 
 import { errorMessage } from '../lib/error.js';
 import { send } from '../shared/send.js';
-import type { Snippet } from '../shared/types.js';
+import type { Record } from '../shared/types.js';
 
-import { SnippetList } from './snippet-list.js';
+import { RecordList } from './record-list.js';
 import {
   countStyle,
   emptyHintStyle,
@@ -18,14 +18,14 @@ import {
 } from './styles.js';
 
 function App() {
-  const [snippets, setSnippets] = useState<Snippet[] | null>(null);
+  const [records, setRecords] = useState<Record[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    send({ type: 'snippet:list' })
+    send({ type: 'record:list' })
       .then((items) => {
-        if (!cancelled) setSnippets(items);
+        if (!cancelled) setRecords(items);
       })
       .catch((err: unknown) => {
         if (!cancelled) {
@@ -39,27 +39,27 @@ function App() {
 
   let body;
   if (error !== null) {
-    body = <p style={errorStyle}>Couldn&apos;t load snippets: {error}</p>;
-  } else if (snippets === null) {
+    body = <p style={errorStyle}>Couldn&apos;t load records: {error}</p>;
+  } else if (records === null) {
     body = <p style={loadingStyle}>Loading…</p>;
-  } else if (snippets.length === 0) {
+  } else if (records.length === 0) {
     body = (
       <div>
-        <p style={emptyStyle}>No snippets yet.</p>
+        <p style={emptyStyle}>No records yet.</p>
         <p style={emptyHintStyle}>Highlight text on any page and press Ctrl+Shift+S.</p>
       </div>
     );
   } else {
-    body = <SnippetList snippets={snippets} />;
+    body = <RecordList records={records} />;
   }
 
   return (
     <main style={mainStyle}>
       <header style={headerStyle}>
         <h1 style={titleStyle}>mark-my-words</h1>
-        {snippets !== null && snippets.length > 0 ? (
+        {records !== null && records.length > 0 ? (
           <span style={countStyle}>
-            {snippets.length} {snippets.length === 1 ? 'snippet' : 'snippets'}
+            {records.length} {records.length === 1 ? 'record' : 'records'}
           </span>
         ) : null}
       </header>

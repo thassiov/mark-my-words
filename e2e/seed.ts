@@ -1,6 +1,6 @@
 import { type BrowserContext, expect, type Page } from '@playwright/test';
 
-import type { Snippet } from '../src/shared/types.js';
+import type { Page as PageRecord, Record, Selection } from '../src/shared/types.js';
 
 /**
  * Open the options page, wait for it to finish its initial load
@@ -10,15 +10,15 @@ import type { Snippet } from '../src/shared/types.js';
 export async function openOptionsWith(
   context: BrowserContext,
   extensionId: string,
-  snippets: Snippet[],
+  records: Record[],
 ): Promise<Page> {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/src/options/options.html`);
   // Wait for the initial empty-load to complete — guarantees the SW's
   // Dexie open() has finished before raw IDB writes happen.
-  await expect(page.getByText('No snippets yet.')).toBeVisible();
-  if (snippets.length > 0) {
-    await seedSnippets(page, snippets);
+  await expect(page.getByText('No records yet.')).toBeVisible();
+  if (records.length > 0) {
+    await seedRecords(page, records);
     await page.reload();
   }
   return page;
@@ -32,9 +32,12 @@ export async function openOptionsWith(
  * The DB ('mmw' / store 'snippets') is created by Dexie when the SW
  * first reads. We open at version 1 with the same `keyPath: 'id'`
  * shape — if Dexie already created the DB this is a no-op upgrade.
+ *
+ * The store name 'snippets' is preserved from the pre-Record-rename
+ * era so existing user data keeps working.
  */
-export async function seedSnippets(page: Page, snippets: Snippet[]): Promise<void> {
-  await page.evaluate(async (records) => {
+export async function seedRecords(page: Page, records: Record[]): Promise<void> {
+  await page.evaluate(async (items) => {
     // Open without specifying a version — Dexie may have created the
     // DB at a higher version with internal metadata stores; we don't
     // want to trigger an upgrade.
@@ -48,7 +51,7 @@ export async function seedSnippets(page: Page, snippets: Snippet[]): Promise<voi
         const tx = db.transaction('snippets', 'readwrite');
         const store = tx.objectStore('snippets');
         store.clear();
-        for (const r of records) store.put(r);
+        for (const r of items) store.put(r);
         tx.addEventListener('complete', () => {
           db.close();
           resolve();
@@ -58,20 +61,39 @@ export async function seedSnippets(page: Page, snippets: Snippet[]): Promise<voi
         });
       });
     });
-  }, snippets);
+  }, records);
 }
 
 /**
- * Build a Snippet with sensible defaults; override any field via `overrides`.
+ * Build a Selection with sensible defaults; override any field via `overrides`.
  * IDs derive from createdAt so they sort the same way the service does.
  */
-export function makeSnippet(overrides: Partial<Snippet> & Pick<Snippet, 'createdAt'>): Snippet {
+export function makeSelection(
+  overrides: Partial<Selection> & Pick<Selection, 'createdAt'>,
+): Selection {
   const { createdAt, id, updatedAt, ...rest } = overrides;
   return {
+    type: 'selection',
     id: id ?? `id-${createdAt}`,
     selectedText: 'sample selected text',
     contextBefore: 'before-context ',
     contextAfter: ' after-context',
+    sourceUrl: 'https://example.com/article',
+    pageTitle: 'Example Article',
+    ...rest,
+    createdAt,
+    updatedAt: updatedAt ?? createdAt,
+  };
+}
+
+/** Build a Page record with sensible defaults. */
+export function makePage(
+  overrides: Partial<PageRecord> & Pick<PageRecord, 'createdAt'>,
+): PageRecord {
+  const { createdAt, id, updatedAt, ...rest } = overrides;
+  return {
+    type: 'page',
+    id: id ?? `id-${createdAt}`,
     sourceUrl: 'https://example.com/article',
     pageTitle: 'Example Article',
     ...rest,

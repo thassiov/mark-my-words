@@ -5,9 +5,9 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import { errorMessage } from '../lib/error.js';
 import { formatRelative } from '../lib/time.js';
 import { hostnameOf } from '../lib/url.js';
-import { isSnippetEvent } from '../shared/messages.js';
+import { isRecordEvent } from '../shared/messages.js';
 import { send } from '../shared/send.js';
-import type { Snippet } from '../shared/types.js';
+import type { Record } from '../shared/types.js';
 
 type Section = 'library' | 'archived' | 'settings';
 
@@ -18,32 +18,43 @@ function archiveLabel(busy: boolean, isArchived: boolean): string {
 
 interface BuildSubtitleArgs {
   error: string | null;
-  snippets: readonly Snippet[] | null;
+  records: readonly Record[] | null;
   filteredLength: number;
   query: string;
   noun: string;
 }
 
-function buildSubtitle({
-  error,
-  snippets,
-  filteredLength,
-  query,
-  noun,
-}: BuildSubtitleArgs): string {
+function buildSubtitle({ error, records, filteredLength, query, noun }: BuildSubtitleArgs): string {
   if (error !== null) return `Couldn't connect: ${error}`;
-  if (snippets === null) return 'Loading…';
+  if (records === null) return 'Loading…';
   if (query.trim() === '') {
-    const word = snippets.length === 1 ? noun : `${noun}s`;
-    return `${String(snippets.length)} ${word}.`;
+    const word = records.length === 1 ? noun : `${noun}s`;
+    return `${String(records.length)} ${word}.`;
   }
-  return `${String(filteredLength)} of ${String(snippets.length)} shown.`;
+  return `${String(filteredLength)} of ${String(records.length)} shown.`;
 }
 
 function ArchivedPill() {
   return (
     <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700">
       Archived
+    </span>
+  );
+}
+
+/**
+ * Small uppercase pill identifying the kind of record on a list card.
+ * Selections and pages share the same library; the badge keeps the user
+ * oriented when scanning a mixed list.
+ */
+function TypeBadge({ type }: { type: 'selection' | 'page' }) {
+  const styles =
+    type === 'selection' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700';
+  return (
+    <span
+      className={`mb-2 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${styles}`}
+    >
+      {type}
     </span>
   );
 }
@@ -118,15 +129,15 @@ function TagChip({ tag, onClick, onRemove, active = false }: TagChipProps) {
 
 /**
  * Inline tag adder for list cards. Renders as a "+ tag" pill that turns
- * into a small input on click. Submits via `snippet:update`; the SW
- * broadcasts `snippet:updated` and the LibrarySection's listener swaps
- * the snippet in place.
+ * into a small input on click. Submits via `record:update`; the SW
+ * broadcasts `record:updated` and the LibrarySection's listener swaps
+ * the record in place.
  */
 interface TagAdderProps {
-  snippet: Snippet;
+  record: Record;
 }
 
-function TagAdder({ snippet }: TagAdderProps) {
+function TagAdder({ record }: TagAdderProps) {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
@@ -138,17 +149,17 @@ function TagAdder({ snippet }: TagAdderProps) {
       setOpen(false);
       return;
     }
-    if ((snippet.tags ?? []).includes(t)) {
+    if ((record.tags ?? []).includes(t)) {
       setOpen(false);
       return;
     }
     setBusy(true);
     try {
       await send({
-        type: 'snippet:update',
+        type: 'record:update',
         payload: {
-          id: snippet.id,
-          edit: { tags: [...(snippet.tags ?? []), t] },
+          id: record.id,
+          edit: { tags: [...(record.tags ?? []), t] },
         },
       });
     } finally {
@@ -207,32 +218,32 @@ function TagAdder({ snippet }: TagAdderProps) {
 // ---------------------------------------------------------------------------
 
 interface DetailProps {
-  snippet: Snippet;
+  record: Record;
   onClose: () => void;
   onDeleted: (id: string) => void;
-  onUpdated: (snippet: Snippet) => void;
+  onUpdated: (record: Record) => void;
   onTagClick: (tag: string) => void;
 }
 
-function SnippetDetail({ snippet, onClose, onDeleted, onUpdated, onTagClick }: DetailProps) {
+function RecordDetail({ record, onClose, onDeleted, onUpdated, onTagClick }: DetailProps) {
   const [editing, setEditing] = useState(false);
-  const [editNote, setEditNote] = useState(snippet.note ?? '');
-  const [editTags, setEditTags] = useState<string[]>(snippet.tags ?? []);
+  const [editNote, setEditNote] = useState(record.note ?? '');
+  const [editTags, setEditTags] = useState<string[]>(record.tags ?? []);
   const [tagDraft, setTagDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [archiving, setArchiving] = useState(false);
 
-  const archivedAt = snippet.archivedAt;
+  const archivedAt = record.archivedAt;
   const isArchived = archivedAt !== undefined;
-  const tags = snippet.tags ?? [];
+  const tags = record.tags ?? [];
 
   useEffect(() => {
     setEditing(false);
-    setEditNote(snippet.note ?? '');
-    setEditTags(snippet.tags ?? []);
+    setEditNote(record.note ?? '');
+    setEditTags(record.tags ?? []);
     setTagDraft('');
-  }, [snippet.id]);
+  }, [record.id]);
 
   function addTagFromDraft() {
     const t = normalizeTag(tagDraft);
@@ -251,9 +262,9 @@ function SnippetDetail({ snippet, onClose, onDeleted, onUpdated, onTagClick }: D
       // Cast: send()'s conditional return type doesn't narrow through
       // the generic, so we assert the concrete shape here.
       const updated = await send({
-        type: 'snippet:update',
+        type: 'record:update',
         payload: {
-          id: snippet.id,
+          id: record.id,
           edit: {
             note: editNote.trim() || undefined,
             tags: editTags,
@@ -268,11 +279,11 @@ function SnippetDetail({ snippet, onClose, onDeleted, onUpdated, onTagClick }: D
   }
 
   async function handleDelete() {
-    if (!globalThis.confirm('Delete this snippet?')) return;
+    if (!globalThis.confirm('Delete this record?')) return;
     setDeleting(true);
     try {
-      await send({ type: 'snippet:delete', payload: { id: snippet.id } });
-      onDeleted(snippet.id);
+      await send({ type: 'record:delete', payload: { id: record.id } });
+      onDeleted(record.id);
     } finally {
       setDeleting(false);
     }
@@ -282,8 +293,8 @@ function SnippetDetail({ snippet, onClose, onDeleted, onUpdated, onTagClick }: D
     setArchiving(true);
     try {
       const updated = await send({
-        type: isArchived ? 'snippet:unarchive' : 'snippet:archive',
-        payload: { id: snippet.id },
+        type: isArchived ? 'record:unarchive' : 'record:archive',
+        payload: { id: record.id },
       });
       onUpdated(updated);
     } finally {
@@ -296,21 +307,21 @@ function SnippetDetail({ snippet, onClose, onDeleted, onUpdated, onTagClick }: D
       <header className="flex items-start justify-between gap-3 border-b border-gray-200 px-5 py-4">
         <div className="min-w-0">
           <a
-            href={snippet.sourceUrl}
+            href={record.sourceUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="block truncate text-sm font-medium text-blue-600 hover:underline"
-            title={snippet.sourceUrl}
+            title={record.sourceUrl}
           >
-            {hostnameOf(snippet.sourceUrl)}
+            {hostnameOf(record.sourceUrl)}
           </a>
-          {snippet.pageTitle ? (
-            <p className="mt-0.5 truncate text-xs text-gray-500" title={snippet.pageTitle}>
-              {snippet.pageTitle}
+          {record.pageTitle ? (
+            <p className="mt-0.5 truncate text-xs text-gray-500" title={record.pageTitle}>
+              {record.pageTitle}
             </p>
           ) : null}
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-400">
-            <span>Saved {formatRelative(snippet.createdAt)}</span>
+            <span>Saved {formatRelative(record.createdAt)}</span>
             {archivedAt === undefined ? null : (
               <>
                 <span aria-hidden="true">·</span>
@@ -364,14 +375,16 @@ function SnippetDetail({ snippet, onClose, onDeleted, onUpdated, onTagClick }: D
       </header>
 
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
-        <section>
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-            Selection
-          </h2>
-          <blockquote className="border-l-4 border-blue-200 bg-blue-50/50 px-3 py-2 text-sm leading-relaxed text-gray-900">
-            {snippet.selectedText}
-          </blockquote>
-        </section>
+        {record.type === 'selection' ? (
+          <section>
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Selection
+            </h2>
+            <blockquote className="border-l-4 border-blue-200 bg-blue-50/50 px-3 py-2 text-sm leading-relaxed text-gray-900">
+              {record.selectedText}
+            </blockquote>
+          </section>
+        ) : null}
 
         {editing ? (
           <>
@@ -442,8 +455,8 @@ function SnippetDetail({ snippet, onClose, onDeleted, onUpdated, onTagClick }: D
                 type="button"
                 onClick={() => {
                   setEditing(false);
-                  setEditNote(snippet.note ?? '');
-                  setEditTags(snippet.tags ?? []);
+                  setEditNote(record.note ?? '');
+                  setEditTags(record.tags ?? []);
                   setTagDraft('');
                 }}
                 className="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
@@ -454,12 +467,12 @@ function SnippetDetail({ snippet, onClose, onDeleted, onUpdated, onTagClick }: D
           </>
         ) : null}
 
-        {!editing && snippet.note ? (
+        {!editing && record.note ? (
           <section>
             <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
               Note
             </h2>
-            <p className="text-sm leading-relaxed text-gray-700">{snippet.note}</p>
+            <p className="text-sm leading-relaxed text-gray-700">{record.note}</p>
           </section>
         ) : null}
 
@@ -478,58 +491,60 @@ function SnippetDetail({ snippet, onClose, onDeleted, onUpdated, onTagClick }: D
                   }}
                   onRemove={() => {
                     void send({
-                      type: 'snippet:update',
+                      type: 'record:update',
                       payload: {
-                        id: snippet.id,
+                        id: record.id,
                         edit: { tags: tags.filter((x) => x !== t) },
                       },
                     });
                   }}
                 />
               ))}
-              <TagAdder snippet={snippet} />
+              <TagAdder record={record} />
             </div>
           </section>
         )}
 
-        {!editing && (snippet.contextBefore || snippet.contextAfter) ? (
+        {!editing &&
+        record.type === 'selection' &&
+        (record.contextBefore || record.contextAfter) ? (
           <section>
             <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
               In context
             </h2>
             <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">
-              <span className="text-gray-400">{snippet.contextBefore}</span>
-              <mark className="bg-yellow-200 px-0.5 text-gray-900">{snippet.selectedText}</mark>
-              <span className="text-gray-400">{snippet.contextAfter}</span>
+              <span className="text-gray-400">{record.contextBefore}</span>
+              <mark className="bg-yellow-200 px-0.5 text-gray-900">{record.selectedText}</mark>
+              <span className="text-gray-400">{record.contextAfter}</span>
             </p>
           </section>
         ) : null}
 
-        {!editing && snippet.screenshotDataUrl ? (
+        {!editing && record.screenshotDataUrl ? (
           <section>
             <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
               Screenshot
             </h2>
             <img
-              src={snippet.screenshotDataUrl}
+              src={record.screenshotDataUrl}
               alt="Page at the moment of capture"
               className="w-full rounded-md border border-gray-200"
             />
           </section>
         ) : null}
 
-        {!editing && snippet.iframeUrl ? (
+        {!editing && record.iframeUrl ? (
           <section>
             <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
               Iframe source
             </h2>
             <a
-              href={snippet.iframeUrl}
+              href={record.iframeUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="break-all text-xs text-blue-600 hover:underline"
             >
-              {snippet.iframeUrl}
+              {record.iframeUrl}
             </a>
           </section>
         ) : null}
@@ -547,7 +562,7 @@ interface LibrarySectionProps {
   archived: boolean;
 }
 
-function compareForView(a: Snippet, b: Snippet, archived: boolean): number {
+function compareForView(a: Record, b: Record, archived: boolean): number {
   if (archived) {
     const aa = a.archivedAt ?? '';
     const bb = b.archivedAt ?? '';
@@ -559,23 +574,23 @@ function compareForView(a: Snippet, b: Snippet, archived: boolean): number {
 }
 
 function LibrarySection({ archived }: LibrarySectionProps) {
-  const [snippets, setSnippets] = useState<Snippet[] | null>(null);
+  const [records, setRecords] = useState<Record[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(() => {
-    // Support deep-link via URL hash: options.html#<snippet-id>
+    // Support deep-link via URL hash: options.html#<record-id>
     const hash = location.hash.slice(1);
     return hash || null;
   });
 
   // Reload when the view (active vs archived) changes.
   useEffect(() => {
-    setSnippets(null);
+    setRecords(null);
     setError(null);
-    send({ type: 'snippet:list', payload: { archived } })
+    send({ type: 'record:list', payload: { archived } })
       .then((items) => {
-        setSnippets(items);
+        setRecords(items);
       })
       .catch((err: unknown) => {
         setError(errorMessage(err));
@@ -583,35 +598,35 @@ function LibrarySection({ archived }: LibrarySectionProps) {
   }, [archived]);
 
   // Reactivity: patch local state when the SW broadcasts a mutation event.
-  // A `snippet:updated` may move an item across the active/archived
+  // A `record:updated` may move an item across the active/archived
   // boundary — drop it from this view if it no longer matches, insert
   // (sorted) if it just started matching.
   useEffect(() => {
-    function matches(s: Snippet): boolean {
+    function matches(s: Record): boolean {
       return archived ? s.archivedAt !== undefined : s.archivedAt === undefined;
     }
     function handleEvent(msg: unknown) {
-      if (!isSnippetEvent(msg)) return;
+      if (!isRecordEvent(msg)) return;
       switch (msg.type) {
-        case 'snippet:created': {
-          if (!matches(msg.snippet)) return;
-          setSnippets((prev) => {
-            const next = prev === null ? [msg.snippet] : [...prev, msg.snippet];
+        case 'record:created': {
+          if (!matches(msg.record)) return;
+          setRecords((prev) => {
+            const next = prev === null ? [msg.record] : [...prev, msg.record];
             next.sort((a, b) => compareForView(a, b, archived));
             return next;
           });
 
           break;
         }
-        case 'snippet:deleted': {
-          setSnippets((prev) => prev?.filter((s) => s.id !== msg.id) ?? null);
+        case 'record:deleted': {
+          setRecords((prev) => prev?.filter((s) => s.id !== msg.id) ?? null);
           setSelectedId((id) => (id === msg.id ? null : id));
 
           break;
         }
-        case 'snippet:updated': {
-          const updated = msg.snippet;
-          setSnippets((prev) => {
+        case 'record:updated': {
+          const updated = msg.record;
+          setRecords((prev) => {
             if (prev === null) return null;
             const exists = prev.some((s) => s.id === updated.id);
             if (matches(updated)) {
@@ -641,37 +656,38 @@ function LibrarySection({ archived }: LibrarySectionProps) {
   }, [archived]);
 
   const allTags = useMemo(() => {
-    if (snippets === null) return [] as string[];
+    if (records === null) return [] as string[];
     const set = new Set<string>();
-    for (const s of snippets) for (const t of s.tags ?? []) set.add(t);
+    for (const s of records) for (const t of s.tags ?? []) set.add(t);
     return [...set].toSorted();
-  }, [snippets]);
+  }, [records]);
 
-  // If the active tag disappears from the page (e.g. last snippet with it
+  // If the active tag disappears from the page (e.g. last record with it
   // moved to the other view), clear it.
   useEffect(() => {
     if (activeTag !== null && !allTags.includes(activeTag)) setActiveTag(null);
   }, [activeTag, allTags]);
 
   const filtered = useMemo(() => {
-    if (snippets === null) return [];
+    if (records === null) return [];
     const q = query.trim().toLowerCase();
-    return snippets.filter((s) => {
+    return records.filter((s) => {
       if (activeTag !== null && !(s.tags ?? []).includes(activeTag)) return false;
       if (q === '') return true;
+      const body = s.type === 'selection' ? s.selectedText : '';
       return (
-        s.selectedText.toLowerCase().includes(q) ||
+        body.toLowerCase().includes(q) ||
         s.pageTitle.toLowerCase().includes(q) ||
         hostnameOf(s.sourceUrl).toLowerCase().includes(q) ||
         (s.note ?? '').toLowerCase().includes(q) ||
         (s.tags ?? []).some((t) => t.includes(q))
       );
     });
-  }, [snippets, query, activeTag]);
+  }, [records, query, activeTag]);
 
   const selected = useMemo(
-    () => (selectedId === null ? null : (snippets?.find((s) => s.id === selectedId) ?? null)),
-    [snippets, selectedId],
+    () => (selectedId === null ? null : (records?.find((s) => s.id === selectedId) ?? null)),
+    [records, selectedId],
   );
 
   useEffect(() => {
@@ -679,28 +695,28 @@ function LibrarySection({ archived }: LibrarySectionProps) {
     // (deep-link from the save card's View →) gets cleared while
     // `filtered` is still empty during load, and the detail pane never
     // opens.
-    if (snippets === null) return;
+    if (records === null) return;
     if (selectedId !== null && !filtered.some((s) => s.id === selectedId)) {
       setSelectedId(null);
     }
-  }, [snippets, filtered, selectedId]);
+  }, [records, filtered, selectedId]);
 
   function handleDeleted(id: string) {
-    setSnippets((prev) => prev?.filter((s) => s.id !== id) ?? null);
+    setRecords((prev) => prev?.filter((s) => s.id !== id) ?? null);
     setSelectedId(null);
   }
 
-  function handleUpdated(updated: Snippet) {
-    setSnippets((prev) => prev?.map((s) => (s.id === updated.id ? updated : s)) ?? null);
+  function handleUpdated(updated: Record) {
+    setRecords((prev) => prev?.map((s) => (s.id === updated.id ? updated : s)) ?? null);
   }
 
   const detailOpen = selected !== null;
 
   const heading = archived ? 'Archived' : 'Library';
-  const noun = archived ? 'archived snippet' : 'snippet';
+  const noun = archived ? 'archived record' : 'record';
   const subtitle = buildSubtitle({
     error,
-    snippets,
+    records,
     filteredLength: filtered.length,
     query,
     noun,
@@ -726,8 +742,8 @@ function LibrarySection({ archived }: LibrarySectionProps) {
           onInput={(e) => {
             setQuery((e.target as HTMLInputElement).value);
           }}
-          placeholder={archived ? 'Filter archived…' : 'Filter snippets…'}
-          aria-label="Filter snippets"
+          placeholder={archived ? 'Filter archived…' : 'Filter records…'}
+          aria-label="Filter records"
           className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
         />
         {activeTag === null ? null : (
@@ -744,28 +760,28 @@ function LibrarySection({ archived }: LibrarySectionProps) {
         )}
       </div>
 
-      {snippets !== null && snippets.length === 0 ? (
+      {records !== null && records.length === 0 ? (
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-center">
           {archived ? (
             <>
-              <p className="text-sm text-gray-700">No archived snippets.</p>
+              <p className="text-sm text-gray-700">No archived records.</p>
               <p className="mt-1 text-xs text-gray-500">
-                Archive a snippet from the Library to keep it without cluttering the main list.
+                Archive a record from the Library to keep it without cluttering the main list.
               </p>
             </>
           ) : (
             <>
-              <p className="text-sm text-gray-700">No snippets yet.</p>
+              <p className="text-sm text-gray-700">No records yet.</p>
               <p className="mt-1 text-xs text-gray-500">
                 Select text on any page and press Ctrl+Shift+S, or right-click → Save selection as
-                snippet.
+                record.
               </p>
             </>
           )}
         </div>
       ) : null}
 
-      {snippets !== null && snippets.length > 0 && filtered.length === 0 ? (
+      {records !== null && records.length > 0 && filtered.length === 0 ? (
         <p className="text-sm text-gray-500">No matches for &quot;{query}&quot;.</p>
       ) : null}
 
@@ -792,9 +808,16 @@ function LibrarySection({ archived }: LibrarySectionProps) {
                     : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                 }`}
               >
-                <p className="line-clamp-3 text-sm leading-relaxed text-gray-900">
-                  {s.selectedText}
-                </p>
+                <TypeBadge type={s.type} />
+                {s.type === 'selection' ? (
+                  <p className="line-clamp-3 text-sm leading-relaxed text-gray-900">
+                    {s.selectedText}
+                  </p>
+                ) : (
+                  <p className="line-clamp-2 text-sm font-medium leading-relaxed text-gray-900">
+                    {s.pageTitle || hostnameOf(s.sourceUrl)}
+                  </p>
+                )}
                 {(s.tags ?? []).length > 0 ? (
                   <div className="mt-2 flex flex-wrap items-center gap-1">
                     {(s.tags ?? []).map((t) => (
@@ -846,8 +869,8 @@ function LibrarySection({ archived }: LibrarySectionProps) {
           style={{ height: 'calc(100vh - 4rem)' }}
         >
           {selected === null ? null : (
-            <SnippetDetail
-              snippet={selected}
+            <RecordDetail
+              record={selected}
               onClose={() => {
                 setSelectedId(null);
               }}

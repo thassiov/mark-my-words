@@ -6,7 +6,7 @@ const HOST_ID = '#mmw-save-card-host';
 
 function defaults(overrides: Partial<SaveCardArgs> = {}): SaveCardArgs {
   return {
-    snippetId: 'snip-1',
+    recordId: 'rec-1',
     currentTags: [],
     currentNote: '',
     allTags: [],
@@ -195,7 +195,7 @@ describe('showSaveCardInPage', () => {
   });
 
   describe('persisting edits', () => {
-    it('Done sends snippet:update with the current chip tags', () => {
+    it('Done sends record:update with the current chip tags', () => {
       showSaveCardInPage(defaults({ currentTags: ['a'] }));
       root().querySelectorAll<HTMLButtonElement>('.row')[0]?.click();
       const input = root().querySelector<HTMLInputElement>('.chip-text')!;
@@ -204,12 +204,12 @@ describe('showSaveCardInPage', () => {
       const done = activePage().querySelector<HTMLButtonElement>('.btn-primary')!;
       done.click();
       expect(sendMessage).toHaveBeenCalledWith({
-        type: 'snippet:update',
-        payload: { id: 'snip-1', edit: { tags: ['a', 'b'] } },
+        type: 'record:update',
+        payload: { id: 'rec-1', edit: { tags: ['a', 'b'] } },
       });
     });
 
-    it('Save sends snippet:update with the note text', () => {
+    it('Save sends record:update with the note text', () => {
       showSaveCardInPage(defaults());
       root().querySelectorAll<HTMLButtonElement>('.row')[1]?.click();
       const ta = root().querySelector<HTMLTextAreaElement>('.note-text')!;
@@ -217,8 +217,8 @@ describe('showSaveCardInPage', () => {
       const save = activePage().querySelector<HTMLButtonElement>('.btn-primary')!;
       save.click();
       expect(sendMessage).toHaveBeenCalledWith({
-        type: 'snippet:update',
-        payload: { id: 'snip-1', edit: { note: 'keep this' } },
+        type: 'record:update',
+        payload: { id: 'rec-1', edit: { note: 'keep this' } },
       });
     });
 

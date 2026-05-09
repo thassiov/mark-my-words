@@ -1,4 +1,4 @@
-import type { SnippetService } from '../snippets/snippet-service.js';
+import type { RecordService } from '../records/record-service.js';
 
 import { isMessage, type Message } from './messages.js';
 
@@ -10,7 +10,7 @@ export class UnknownMessageError extends Error {
 }
 
 export interface DispatcherDeps {
-  snippets: SnippetService;
+  records: RecordService;
 }
 
 /**
@@ -34,27 +34,30 @@ export function createDispatcher(deps: DispatcherDeps): Dispatcher {
     }
     const msg: Message = raw;
     switch (msg.type) {
-      case 'snippet:save': {
-        return deps.snippets.save(msg.payload);
+      case 'record:save-selection': {
+        return deps.records.saveSelection(msg.payload);
       }
-      case 'snippet:list': {
-        return deps.snippets.list(msg.payload ?? {});
+      case 'record:save-page': {
+        return deps.records.savePage(msg.payload);
       }
-      case 'snippet:count': {
-        return deps.snippets.count();
+      case 'record:list': {
+        return deps.records.list(msg.payload ?? {});
       }
-      case 'snippet:delete': {
-        await deps.snippets.delete(msg.payload.id);
+      case 'record:count': {
+        return deps.records.count();
+      }
+      case 'record:delete': {
+        await deps.records.delete(msg.payload.id);
         return null;
       }
-      case 'snippet:update': {
-        return deps.snippets.update(msg.payload.id, msg.payload.edit);
+      case 'record:update': {
+        return deps.records.update(msg.payload.id, msg.payload.edit);
       }
-      case 'snippet:archive': {
-        return deps.snippets.archive(msg.payload.id);
+      case 'record:archive': {
+        return deps.records.archive(msg.payload.id);
       }
-      case 'snippet:unarchive': {
-        return deps.snippets.unarchive(msg.payload.id);
+      case 'record:unarchive': {
+        return deps.records.unarchive(msg.payload.id);
       }
       default: {
         // Exhaustiveness check — fails to compile if a Message variant is missing above.

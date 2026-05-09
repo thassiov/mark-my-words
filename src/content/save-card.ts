@@ -4,10 +4,10 @@
  * `chrome.scripting.executeScript({ args: [...] })`.
  */
 export interface SaveCardArgs {
-  snippetId: string;
-  /** Tags currently on the snippet. Empty on initial save; non-empty when re-opening. */
+  recordId: string;
+  /** Tags currently on the record. Empty on initial save; non-empty when re-opening. */
   currentTags: readonly string[];
-  /** Note currently on the snippet. Empty on initial save. */
+  /** Note currently on the record. Empty on initial save. */
   currentNote: string;
   /** All tags across the user's library, used to populate the suggestions row. */
   allTags: readonly string[];
@@ -34,14 +34,14 @@ export interface SaveCardArgs {
  * does not block us.
  *
  * Three pages: idle (page 1) → tags (page 2) / note (page 3). Done/Save
- * fire `snippet:update` optimistically and return to page 1 with the
+ * fire `record:update` optimistically and return to page 1 with the
  * row label flipped to reflect the saved state.
  */
 /* eslint-disable max-lines-per-function, max-statements --
    helpers and constants must live inside the function body to survive
    executeScript serialization (see top docstring). */
 export function showSaveCardInPage(args: SaveCardArgs): void {
-  const { snippetId, currentTags, currentNote, allTags, visibleMs } = args;
+  const { recordId, currentTags, currentNote, allTags, visibleMs } = args;
   const HOST_ID = 'mmw-save-card-host';
   document.querySelector(`#${HOST_ID}`)?.remove();
 
@@ -192,7 +192,7 @@ export function showSaveCardInPage(args: SaveCardArgs): void {
   // ------------------------------------------------------------------
   const SUGGESTION_CAP = 8;
   const initialChips = [...currentTags];
-  // Suggestions exclude tags already on the snippet so we never show a
+  // Suggestions exclude tags already on the record so we never show a
   // suggestion that would no-op when clicked.
   const applied = new Set(initialChips);
   const suggestions = allTags.filter((t) => !applied.has(t)).slice(0, SUGGESTION_CAP);
@@ -238,7 +238,7 @@ export function showSaveCardInPage(args: SaveCardArgs): void {
   const card = document.createElement('div');
   card.className = 'card';
   card.setAttribute('role', 'dialog');
-  card.setAttribute('aria-label', 'Snippet save options');
+  card.setAttribute('aria-label', 'Save options');
   shadow.append(card);
 
   card.append(buildPage1(), buildPage2(), buildPage3());
@@ -262,13 +262,13 @@ export function showSaveCardInPage(args: SaveCardArgs): void {
     header.className = 'header';
     const status = document.createElement('span');
     status.className = 'status';
-    status.textContent = '✓  Snippet saved';
+    status.textContent = '✓  Saved';
     const view = document.createElement('button');
     view.className = 'view-link';
     view.type = 'button';
     view.textContent = 'View →';
     view.addEventListener('click', () => {
-      void chrome.runtime.sendMessage({ type: 'ui:open-snippet', id: snippetId });
+      void chrome.runtime.sendMessage({ type: 'ui:open-record', id: recordId });
       dismiss();
     });
     header.append(status, view);
@@ -492,13 +492,13 @@ export function showSaveCardInPage(args: SaveCardArgs): void {
   }
 
   /**
-   * Fire-and-forget snippet:update. Optimistic UI — we navigate away
+   * Fire-and-forget record:update. Optimistic UI — we navigate away
    * before the response, so failures are logged for diagnostics rather
    * than rolled back. Wrapped to suppress unhandled-rejection noise.
    */
   function sendUpdate(edit: { tags?: string[]; note?: string }): void {
     void chrome.runtime
-      .sendMessage({ type: 'snippet:update', payload: { id: snippetId, edit } })
+      .sendMessage({ type: 'record:update', payload: { id: recordId, edit } })
       .then((res: unknown) => {
         if (typeof res === 'object' && res !== null && (res as { ok?: unknown }).ok === false) {
           console.warn('[mark-my-words] save-card update rejected:', res);

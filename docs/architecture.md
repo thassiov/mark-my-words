@@ -3,12 +3,22 @@
 This document describes what `mark-my-words` is, how its parts fit
 together, and how to find your way back to any piece of it.
 
+> **Naming note (recent rename):** what older parts of this doc call
+> "snippets" / "Snippet" is now expressed in code as **Records** — a
+> discriminated union of **Selection** (text excerpt with context) and
+> **Page** (whole-page bookmark, no body). Both share the same storage
+> table and the same set of operations (note, tags, archive, etc.) —
+> they only differ in what `read-*` content function captures and what
+> the list/detail UI renders. See
+> `workbench/dev/mark-my-words/09-records-and-pages.md` for the full
+> rationale, type model, and file map.
+
 ## What it is
 
-A Manifest V3 browser extension that captures a text selection from
-the current tab — with the surrounding context, page metadata, and a
-screenshot — and stores it locally in IndexedDB. A separate options
-page lets you browse, filter, and inspect saved snippets.
+A Manifest V3 browser extension that captures **records** of two kinds
+from the current tab — text selections (with surrounding context) and
+whole pages — and stores them locally in IndexedDB. A separate options
+page lets you browse, filter, and inspect saved records.
 
 There is no account, no remote server, no sync, and no telemetry.
 Everything lives in the browser profile.

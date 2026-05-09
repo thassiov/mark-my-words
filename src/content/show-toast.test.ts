@@ -100,12 +100,12 @@ describe('showToastInPage', () => {
       expect(el.textContent).toContain('— view →');
     });
 
-    it('clicking sends ui:open-snippet message with the id', () => {
+    it('clicking sends ui:open-record message with the id', () => {
       showToastInPage('success', 'Saved', 1000, 'snip-abc');
       const el = document.querySelector<HTMLElement>('#mmw-toast')!;
       el.click();
       expect(sendMessage).toHaveBeenCalledOnce();
-      expect(sendMessage).toHaveBeenCalledWith({ type: 'ui:open-snippet', id: 'snip-abc' });
+      expect(sendMessage).toHaveBeenCalledWith({ type: 'ui:open-record', id: 'snip-abc' });
     });
   });
 });

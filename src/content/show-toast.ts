@@ -67,7 +67,7 @@ export function showToastInPage(
 
   if (snippetId !== undefined) {
     el.addEventListener('click', () => {
-      void chrome.runtime.sendMessage({ type: 'ui:open-snippet', id: snippetId });
+      void chrome.runtime.sendMessage({ type: 'ui:open-record', id: snippetId });
     });
   }
 

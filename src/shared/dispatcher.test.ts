@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { SnippetService } from '../snippets/snippet-service.js';
+import type { RecordService } from '../records/record-service.js';
 
 import { createDispatcher, UnknownMessageError } from './dispatcher.js';
-import type { Snippet, SnippetInput } from './types.js';
+import type { Record, SelectionInput } from './types.js';
 
-function makeFakeService(): SnippetService & {
-  save: ReturnType<typeof vi.fn>;
+function makeFakeService(): RecordService & {
+  saveSelection: ReturnType<typeof vi.fn>;
+  savePage: ReturnType<typeof vi.fn>;
   list: ReturnType<typeof vi.fn>;
   count: ReturnType<typeof vi.fn>;
   delete: ReturnType<typeof vi.fn>;
@@ -15,7 +16,8 @@ function makeFakeService(): SnippetService & {
   unarchive: ReturnType<typeof vi.fn>;
 } {
   const fake = {
-    save: vi.fn(),
+    saveSelection: vi.fn(),
+    savePage: vi.fn(),
     list: vi.fn(),
     count: vi.fn(),
     delete: vi.fn(),
@@ -23,10 +25,10 @@ function makeFakeService(): SnippetService & {
     archive: vi.fn(),
     unarchive: vi.fn(),
   };
-  return fake as unknown as SnippetService & typeof fake;
+  return fake as unknown as RecordService & typeof fake;
 }
 
-const baseInput: SnippetInput = {
+const baseInput: SelectionInput = {
   selectedText: 'hello',
   contextBefore: '',
   contextAfter: '',
@@ -34,169 +36,196 @@ const baseInput: SnippetInput = {
   pageTitle: 'Example',
 };
 
-const fakeSnippet: Snippet = {
+const fakeRecord: Record = {
   ...baseInput,
+  type: 'selection',
   id: 'id-0001',
   createdAt: '2026-05-04T12:00:00.000Z',
   updatedAt: '2026-05-04T12:00:00.000Z',
 };
 
 describe('createDispatcher', () => {
-  describe('snippet:save', () => {
-    it('routes to snippets.save with the payload', async () => {
-      const snippets = makeFakeService();
-      snippets.save.mockResolvedValue(fakeSnippet);
-      const dispatch = createDispatcher({ snippets });
+  describe('record:save-selection', () => {
+    it('routes to records.saveSelection with the payload', async () => {
+      const records = makeFakeService();
+      records.saveSelection.mockResolvedValue(fakeRecord);
+      const dispatch = createDispatcher({ records });
 
-      const result = await dispatch({ type: 'snippet:save', payload: baseInput });
+      const result = await dispatch({ type: 'record:save-selection', payload: baseInput });
 
-      expect(snippets.save).toHaveBeenCalledOnce();
-      expect(snippets.save).toHaveBeenCalledWith(baseInput);
-      expect(result).toEqual(fakeSnippet);
+      expect(records.saveSelection).toHaveBeenCalledOnce();
+      expect(records.saveSelection).toHaveBeenCalledWith(baseInput);
+      expect(result).toEqual(fakeRecord);
     });
 
     it('propagates rejection from the service', async () => {
-      const snippets = makeFakeService();
-      snippets.save.mockRejectedValue(new Error('boom'));
-      const dispatch = createDispatcher({ snippets });
+      const records = makeFakeService();
+      records.saveSelection.mockRejectedValue(new Error('boom'));
+      const dispatch = createDispatcher({ records });
 
-      await expect(dispatch({ type: 'snippet:save', payload: baseInput })).rejects.toThrow('boom');
+      await expect(dispatch({ type: 'record:save-selection', payload: baseInput })).rejects.toThrow(
+        'boom',
+      );
     });
   });
 
-  describe('snippet:list', () => {
+  describe('record:save-page', () => {
+    it('routes to records.savePage with the payload', async () => {
+      const records = makeFakeService();
+      const fakePage: Record = {
+        type: 'page',
+        id: 'id-page-1',
+        sourceUrl: 'https://example.com',
+        pageTitle: 'Example',
+        createdAt: '2026-05-04T12:00:00.000Z',
+        updatedAt: '2026-05-04T12:00:00.000Z',
+      };
+      records.savePage.mockResolvedValue(fakePage);
+      const dispatch = createDispatcher({ records });
+
+      const result = await dispatch({
+        type: 'record:save-page',
+        payload: { sourceUrl: 'https://example.com', pageTitle: 'Example' },
+      });
+
+      expect(records.savePage).toHaveBeenCalledOnce();
+      expect(result).toEqual(fakePage);
+    });
+  });
+
+  describe('record:list', () => {
     it('routes with no payload', async () => {
-      const snippets = makeFakeService();
-      snippets.list.mockResolvedValue([fakeSnippet]);
-      const dispatch = createDispatcher({ snippets });
+      const records = makeFakeService();
+      records.list.mockResolvedValue([fakeRecord]);
+      const dispatch = createDispatcher({ records });
 
-      const result = await dispatch({ type: 'snippet:list' });
+      const result = await dispatch({ type: 'record:list' });
 
-      expect(snippets.list).toHaveBeenCalledOnce();
-      expect(snippets.list).toHaveBeenCalledWith({});
-      expect(result).toEqual([fakeSnippet]);
+      expect(records.list).toHaveBeenCalledOnce();
+      expect(records.list).toHaveBeenCalledWith({});
+      expect(result).toEqual([fakeRecord]);
     });
 
     it('forwards limit/offset payload', async () => {
-      const snippets = makeFakeService();
-      snippets.list.mockResolvedValue([]);
-      const dispatch = createDispatcher({ snippets });
+      const records = makeFakeService();
+      records.list.mockResolvedValue([]);
+      const dispatch = createDispatcher({ records });
 
-      await dispatch({ type: 'snippet:list', payload: { limit: 5, offset: 2 } });
+      await dispatch({ type: 'record:list', payload: { limit: 5, offset: 2 } });
 
-      expect(snippets.list).toHaveBeenCalledWith({ limit: 5, offset: 2 });
+      expect(records.list).toHaveBeenCalledWith({ limit: 5, offset: 2 });
     });
   });
 
-  describe('snippet:count', () => {
-    it('routes to snippets.count', async () => {
-      const snippets = makeFakeService();
-      snippets.count.mockResolvedValue(42);
-      const dispatch = createDispatcher({ snippets });
+  describe('record:count', () => {
+    it('routes to records.count', async () => {
+      const records = makeFakeService();
+      records.count.mockResolvedValue(42);
+      const dispatch = createDispatcher({ records });
 
-      const result = await dispatch({ type: 'snippet:count' });
+      const result = await dispatch({ type: 'record:count' });
 
-      expect(snippets.count).toHaveBeenCalledOnce();
+      expect(records.count).toHaveBeenCalledOnce();
       expect(result).toBe(42);
     });
   });
 
-  describe('snippet:delete', () => {
-    it('routes to snippets.delete with the id and returns null', async () => {
-      const snippets = makeFakeService();
-      snippets.delete.mockResolvedValue(undefined);
-      const dispatch = createDispatcher({ snippets });
+  describe('record:delete', () => {
+    it('routes to records.delete with the id and returns null', async () => {
+      const records = makeFakeService();
+      records.delete.mockResolvedValue(undefined);
+      const dispatch = createDispatcher({ records });
 
-      const result = await dispatch({ type: 'snippet:delete', payload: { id: 'id-0001' } });
+      const result = await dispatch({ type: 'record:delete', payload: { id: 'id-0001' } });
 
-      expect(snippets.delete).toHaveBeenCalledOnce();
-      expect(snippets.delete).toHaveBeenCalledWith('id-0001');
+      expect(records.delete).toHaveBeenCalledOnce();
+      expect(records.delete).toHaveBeenCalledWith('id-0001');
       expect(result).toBeNull();
     });
 
     it('propagates rejection from the service', async () => {
-      const snippets = makeFakeService();
-      snippets.delete.mockRejectedValue(new Error('boom'));
-      const dispatch = createDispatcher({ snippets });
+      const records = makeFakeService();
+      records.delete.mockRejectedValue(new Error('boom'));
+      const dispatch = createDispatcher({ records });
 
-      await expect(
-        dispatch({ type: 'snippet:delete', payload: { id: 'id-0001' } }),
-      ).rejects.toThrow('boom');
+      await expect(dispatch({ type: 'record:delete', payload: { id: 'id-0001' } })).rejects.toThrow(
+        'boom',
+      );
     });
   });
 
-  describe('snippet:update', () => {
-    it('routes to snippets.update with id and edit and returns the updated snippet', async () => {
-      const snippets = makeFakeService();
-      const updated = { ...fakeSnippet, note: 'edited note' };
-      snippets.update.mockResolvedValue(updated);
-      const dispatch = createDispatcher({ snippets });
+  describe('record:update', () => {
+    it('routes to records.update with id and edit and returns the updated record', async () => {
+      const records = makeFakeService();
+      const updated = { ...fakeRecord, note: 'edited note' };
+      records.update.mockResolvedValue(updated);
+      const dispatch = createDispatcher({ records });
 
       const result = await dispatch({
-        type: 'snippet:update',
+        type: 'record:update',
         payload: { id: 'id-0001', edit: { note: 'edited note' } },
       });
 
-      expect(snippets.update).toHaveBeenCalledOnce();
-      expect(snippets.update).toHaveBeenCalledWith('id-0001', { note: 'edited note' });
+      expect(records.update).toHaveBeenCalledOnce();
+      expect(records.update).toHaveBeenCalledWith('id-0001', { note: 'edited note' });
       expect(result).toEqual(updated);
     });
 
     it('propagates rejection from the service', async () => {
-      const snippets = makeFakeService();
-      snippets.update.mockRejectedValue(new Error('not found'));
-      const dispatch = createDispatcher({ snippets });
+      const records = makeFakeService();
+      records.update.mockRejectedValue(new Error('not found'));
+      const dispatch = createDispatcher({ records });
 
       await expect(
-        dispatch({ type: 'snippet:update', payload: { id: 'x', edit: {} } }),
+        dispatch({ type: 'record:update', payload: { id: 'x', edit: {} } }),
       ).rejects.toThrow('not found');
     });
   });
 
-  describe('snippet:archive', () => {
-    it('routes to snippets.archive with the id', async () => {
-      const snippets = makeFakeService();
-      const archived = { ...fakeSnippet, archivedAt: '2026-05-04T13:00:00.000Z' };
-      snippets.archive.mockResolvedValue(archived);
-      const dispatch = createDispatcher({ snippets });
+  describe('record:archive', () => {
+    it('routes to records.archive with the id', async () => {
+      const records = makeFakeService();
+      const archived = { ...fakeRecord, archivedAt: '2026-05-04T13:00:00.000Z' };
+      records.archive.mockResolvedValue(archived);
+      const dispatch = createDispatcher({ records });
 
-      const result = await dispatch({ type: 'snippet:archive', payload: { id: 'id-0001' } });
+      const result = await dispatch({ type: 'record:archive', payload: { id: 'id-0001' } });
 
-      expect(snippets.archive).toHaveBeenCalledOnce();
-      expect(snippets.archive).toHaveBeenCalledWith('id-0001');
+      expect(records.archive).toHaveBeenCalledOnce();
+      expect(records.archive).toHaveBeenCalledWith('id-0001');
       expect(result).toEqual(archived);
     });
 
     it('propagates rejection from the service', async () => {
-      const snippets = makeFakeService();
-      snippets.archive.mockRejectedValue(new Error('not found'));
-      const dispatch = createDispatcher({ snippets });
+      const records = makeFakeService();
+      records.archive.mockRejectedValue(new Error('not found'));
+      const dispatch = createDispatcher({ records });
 
-      await expect(dispatch({ type: 'snippet:archive', payload: { id: 'x' } })).rejects.toThrow(
+      await expect(dispatch({ type: 'record:archive', payload: { id: 'x' } })).rejects.toThrow(
         'not found',
       );
     });
   });
 
-  describe('snippet:unarchive', () => {
-    it('routes to snippets.unarchive with the id', async () => {
-      const snippets = makeFakeService();
-      snippets.unarchive.mockResolvedValue(fakeSnippet);
-      const dispatch = createDispatcher({ snippets });
+  describe('record:unarchive', () => {
+    it('routes to records.unarchive with the id', async () => {
+      const records = makeFakeService();
+      records.unarchive.mockResolvedValue(fakeRecord);
+      const dispatch = createDispatcher({ records });
 
-      const result = await dispatch({ type: 'snippet:unarchive', payload: { id: 'id-0001' } });
+      const result = await dispatch({ type: 'record:unarchive', payload: { id: 'id-0001' } });
 
-      expect(snippets.unarchive).toHaveBeenCalledOnce();
-      expect(snippets.unarchive).toHaveBeenCalledWith('id-0001');
-      expect(result).toEqual(fakeSnippet);
+      expect(records.unarchive).toHaveBeenCalledOnce();
+      expect(records.unarchive).toHaveBeenCalledWith('id-0001');
+      expect(result).toEqual(fakeRecord);
     });
 
     it('propagates rejection from the service', async () => {
-      const snippets = makeFakeService();
-      snippets.unarchive.mockRejectedValue(new Error('not found'));
-      const dispatch = createDispatcher({ snippets });
+      const records = makeFakeService();
+      records.unarchive.mockRejectedValue(new Error('not found'));
+      const dispatch = createDispatcher({ records });
 
-      await expect(dispatch({ type: 'snippet:unarchive', payload: { id: 'x' } })).rejects.toThrow(
+      await expect(dispatch({ type: 'record:unarchive', payload: { id: 'x' } })).rejects.toThrow(
         'not found',
       );
     });
@@ -204,32 +233,33 @@ describe('createDispatcher', () => {
 
   describe('unknown / malformed', () => {
     it('throws on an unknown type', async () => {
-      const snippets = makeFakeService();
-      const dispatch = createDispatcher({ snippets });
-      await expect(dispatch({ type: 'snippet:nope' })).rejects.toBeInstanceOf(UnknownMessageError);
+      const records = makeFakeService();
+      const dispatch = createDispatcher({ records });
+      await expect(dispatch({ type: 'record:nope' })).rejects.toBeInstanceOf(UnknownMessageError);
     });
 
     it('throws on a non-object message', async () => {
-      const snippets = makeFakeService();
-      const dispatch = createDispatcher({ snippets });
+      const records = makeFakeService();
+      const dispatch = createDispatcher({ records });
       await expect(dispatch('hello')).rejects.toBeInstanceOf(UnknownMessageError);
       await expect(dispatch(null)).rejects.toBeInstanceOf(UnknownMessageError);
       await expect(dispatch(123)).rejects.toBeInstanceOf(UnknownMessageError);
     });
 
     it('throws on a missing type field', async () => {
-      const snippets = makeFakeService();
-      const dispatch = createDispatcher({ snippets });
+      const records = makeFakeService();
+      const dispatch = createDispatcher({ records });
       await expect(dispatch({ payload: 'whatever' })).rejects.toBeInstanceOf(UnknownMessageError);
     });
 
     it('does not call any service handler on bad input', async () => {
-      const snippets = makeFakeService();
-      const dispatch = createDispatcher({ snippets });
+      const records = makeFakeService();
+      const dispatch = createDispatcher({ records });
       await expect(dispatch({ type: 'bogus' })).rejects.toBeInstanceOf(UnknownMessageError);
-      expect(snippets.save).not.toHaveBeenCalled();
-      expect(snippets.list).not.toHaveBeenCalled();
-      expect(snippets.count).not.toHaveBeenCalled();
+      expect(records.saveSelection).not.toHaveBeenCalled();
+      expect(records.savePage).not.toHaveBeenCalled();
+      expect(records.list).not.toHaveBeenCalled();
+      expect(records.count).not.toHaveBeenCalled();
     });
   });
 });

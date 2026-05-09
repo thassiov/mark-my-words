@@ -1,19 +1,22 @@
-import type { Snippet, SnippetEdit, SnippetInput } from './types.js';
+import type { Page, PageInput, Record, RecordEdit, Selection, SelectionInput } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Push events — SW → extension pages (opposite direction to commands)
 // ---------------------------------------------------------------------------
 
-/** Broadcast from the service worker after any snippet mutation. */
-export type SnippetEvent =
-  | { type: 'snippet:created'; snippet: Snippet }
-  | { type: 'snippet:deleted'; id: string }
-  | { type: 'snippet:updated'; snippet: Snippet };
+/** Broadcast from the service worker after any record mutation. */
+export type RecordEvent =
+  | { type: 'record:created'; record: Record }
+  | { type: 'record:deleted'; id: string }
+  | { type: 'record:updated'; record: Record };
 
-export function isSnippetEvent(v: unknown): v is SnippetEvent {
+export function isRecordEvent(v: unknown): v is RecordEvent {
   if (typeof v !== 'object' || v === null) return false;
-  const t = (v as Record<string, unknown>)['type'];
-  return t === 'snippet:created' || t === 'snippet:deleted' || t === 'snippet:updated';
+  // Inline index signature instead of `Record<string, unknown>` — our
+  // `Record` type shadows the TS utility within this file.
+  // eslint-disable-next-line @typescript-eslint/consistent-indexed-object-style
+  const t = (v as { [k: string]: unknown })['type'];
+  return t === 'record:created' || t === 'record:deleted' || t === 'record:updated';
 }
 
 // ---------------------------------------------------------------------------
@@ -32,37 +35,46 @@ export function isSnippetEvent(v: unknown): v is SnippetEvent {
  * browser-side wrapper {@link send} lives in `send.ts` so test
  * environments that don't have the extension APIs can still import this
  * module.
+ *
+ * Note: `record:save-selection` / `record:save-page` exist for symmetry
+ * but no consumer currently sends them — the service worker handles the
+ * save end-to-end without going through the bus. They're kept so the
+ * dispatcher's exhaustive switch covers the operation if a future caller
+ * wants to drive a save from another context.
  */
 export type Message =
-  | { type: 'snippet:save'; payload: SnippetInput }
+  | { type: 'record:save-selection'; payload: SelectionInput }
+  | { type: 'record:save-page'; payload: PageInput }
   | {
-      type: 'snippet:list';
+      type: 'record:list';
       payload?: { limit?: number; offset?: number; archived?: boolean };
     }
-  | { type: 'snippet:count' }
-  | { type: 'snippet:delete'; payload: { id: string } }
-  | { type: 'snippet:update'; payload: { id: string; edit: SnippetEdit } }
-  | { type: 'snippet:archive'; payload: { id: string } }
-  | { type: 'snippet:unarchive'; payload: { id: string } };
+  | { type: 'record:count' }
+  | { type: 'record:delete'; payload: { id: string } }
+  | { type: 'record:update'; payload: { id: string; edit: RecordEdit } }
+  | { type: 'record:archive'; payload: { id: string } }
+  | { type: 'record:unarchive'; payload: { id: string } };
 
 /**
  * Maps a message type to its expected response shape.
  */
-export type Response<T extends Message['type']> = T extends 'snippet:save'
-  ? Snippet
-  : T extends 'snippet:list'
-    ? Snippet[]
-    : T extends 'snippet:count'
-      ? number
-      : T extends 'snippet:delete'
-        ? null
-        : T extends 'snippet:update'
-          ? Snippet
-          : T extends 'snippet:archive'
-            ? Snippet
-            : T extends 'snippet:unarchive'
-              ? Snippet
-              : never;
+export type Response<T extends Message['type']> = T extends 'record:save-selection'
+  ? Selection
+  : T extends 'record:save-page'
+    ? Page
+    : T extends 'record:list'
+      ? Record[]
+      : T extends 'record:count'
+        ? number
+        : T extends 'record:delete'
+          ? null
+          : T extends 'record:update'
+            ? Record
+            : T extends 'record:archive'
+              ? Record
+              : T extends 'record:unarchive'
+                ? Record
+                : never;
 
 /**
  * Runtime-side guard. Cheap structural check; the real type-safety is
@@ -71,16 +83,18 @@ export type Response<T extends Message['type']> = T extends 'snippet:save'
  */
 export function isMessage(v: unknown): v is Message {
   if (typeof v !== 'object' || v === null) return false;
-  const obj = v as Record<string, unknown>;
+  // eslint-disable-next-line @typescript-eslint/consistent-indexed-object-style
+  const obj = v as { [k: string]: unknown };
   const t = obj['type'];
   if (typeof t !== 'string') return false;
   return (
-    t === 'snippet:save' ||
-    t === 'snippet:list' ||
-    t === 'snippet:count' ||
-    t === 'snippet:delete' ||
-    t === 'snippet:update' ||
-    t === 'snippet:archive' ||
-    t === 'snippet:unarchive'
+    t === 'record:save-selection' ||
+    t === 'record:save-page' ||
+    t === 'record:list' ||
+    t === 'record:count' ||
+    t === 'record:delete' ||
+    t === 'record:update' ||
+    t === 'record:archive' ||
+    t === 'record:unarchive'
   );
 }

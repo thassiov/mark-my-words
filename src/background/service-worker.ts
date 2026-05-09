@@ -10,17 +10,18 @@
 
 import pkg from '../../package.json' with { type: 'json' };
 import { MAX_SELECTION_CHARS, TOAST_VISIBLE_MS } from '../config.js';
+import { readPageInPage } from '../content/read-page.js';
 import { readSelectionInPage } from '../content/read-selection.js';
 import { showSaveCardInPage } from '../content/save-card.js';
 import type { SaveCardArgs } from '../content/save-card.js';
 import { showToastInPage } from '../content/show-toast.js';
 import type { ToastVariant } from '../content/show-toast.js';
 import { errorMessage } from '../lib/error.js';
+import { RecordService } from '../records/record-service.js';
 import { createDispatcher } from '../shared/dispatcher.js';
 import { isMessage } from '../shared/messages.js';
-import type { Message, SnippetEvent } from '../shared/messages.js';
-import type { Snippet } from '../shared/types.js';
-import { SnippetService } from '../snippets/snippet-service.js';
+import type { Message, RecordEvent } from '../shared/messages.js';
+import type { Record } from '../shared/types.js';
 import { IdbRepo } from '../storage/idb-repo.js';
 
 const VERSION = pkg.version || '0.0.0';
@@ -28,8 +29,8 @@ const VERSION = pkg.version || '0.0.0';
 console.log(`[mark-my-words] service worker booted (version ${VERSION})`);
 
 const repo = new IdbRepo();
-const snippets = new SnippetService(repo);
-const dispatch = createDispatcher({ snippets });
+const records = new RecordService(repo);
+const dispatch = createDispatcher({ records });
 
 // Wrap dispatch's response in an envelope so the sender can distinguish
 // resolved values from thrown errors. chrome.runtime.sendMessage's
@@ -37,8 +38,8 @@ const dispatch = createDispatcher({ snippets });
 // an envelope, throws on the SW side become silent rejections on the
 // sender side that lose the message.
 chrome.runtime.onMessage.addListener((raw: unknown, _sender, sendResponse) => {
-  // Handle toast-click navigation requests (not part of the typed message bus).
-  if (isOpenSnippetRequest(raw)) {
+  // Handle save-card click navigation requests (not part of the typed message bus).
+  if (isOpenRecordRequest(raw)) {
     void chrome.tabs.create({
       url: `chrome-extension://${chrome.runtime.id}/src/options/options.html#${raw.id}`,
     });
@@ -50,7 +51,7 @@ chrome.runtime.onMessage.addListener((raw: unknown, _sender, sendResponse) => {
     .then((value) => {
       sendResponse({ ok: true, value });
       if (isMessage(raw)) {
-        broadcastSnippetEvent(raw, value);
+        broadcastRecordEvent(raw, value);
       }
     })
     .catch((err: unknown) => {
@@ -64,18 +65,28 @@ chrome.action.onClicked.addListener(() => {
   void chrome.runtime.openOptionsPage();
 });
 
-const CONTEXT_MENU_ID = 'mmw-save-snippet';
+const CONTEXT_MENU_SAVE_SELECTION_ID = 'mmw-save-selection';
+const CONTEXT_MENU_SAVE_PAGE_ID = 'mmw-save-page';
 
 // Re-create the context menu on every SW boot. `removeAll` + `create` is
 // idempotent: it works whether the menu was already there (from a prior
 // SW lifecycle) or not. Doing this here at module load — rather than
 // only in `onInstalled` — ensures the menu exists even when the SW
 // wakes after being killed by Chrome between sessions.
+//
+// Two items, each scoped to its own context: Chromium hides whichever
+// doesn't apply, so the user perceives a single "reactive" item that
+// changes meaning based on whether text is selected.
 chrome.contextMenus.removeAll(() => {
   chrome.contextMenus.create({
-    id: CONTEXT_MENU_ID,
-    title: 'Save selection as snippet',
+    id: CONTEXT_MENU_SAVE_SELECTION_ID,
+    title: 'Save selection',
     contexts: ['selection'],
+  });
+  chrome.contextMenus.create({
+    id: CONTEXT_MENU_SAVE_PAGE_ID,
+    title: 'Save page',
+    contexts: ['page'],
   });
 });
 
@@ -85,18 +96,54 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 chrome.commands.onCommand.addListener((command) => {
   if (command !== 'save-snippet') return;
-  void handleSaveSelection();
+  // Reactive shortcut: if there's a selection, save it; otherwise save
+  // the bare page. Mirrors the right-click menu's behavior.
+  void handleSaveSelectionOrPage();
 });
 
+async function handleSaveSelectionOrPage(tabId?: number): Promise<void> {
+  const resolvedTabId = tabId ?? (await activeTabId());
+  if (resolvedTabId === undefined) {
+    console.log('[mark-my-words] no active tab');
+    return;
+  }
+  // Probe whether the page has a selection by injecting the existing
+  // reader. Null means "nothing selected" — fall through to page save.
+  let probed: ReturnType<typeof readSelectionInPage>;
+  try {
+    const injections = await chrome.scripting.executeScript({
+      target: { tabId: resolvedTabId },
+      func: readSelectionInPage,
+    });
+    probed = injections[0]?.result ?? null;
+  } catch (error) {
+    console.error('[mark-my-words] failed to read selection:', error);
+    return;
+  }
+  await (probed === null
+    ? handleSavePage(resolvedTabId)
+    : handleSaveSelection(resolvedTabId, probed));
+}
+
+async function activeTabId(): Promise<number | undefined> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tab?.id;
+}
+
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId !== CONTEXT_MENU_ID) return;
-  void handleSaveSelection(tab?.id);
+  if (info.menuItemId === CONTEXT_MENU_SAVE_SELECTION_ID) {
+    void handleSaveSelection(tab?.id);
+    return;
+  }
+  if (info.menuItemId === CONTEXT_MENU_SAVE_PAGE_ID) {
+    void handleSavePage(tab?.id);
+  }
 });
 
 /**
  * Inject {@link readSelectionInPage} into the given tab (or the active
  * tab if none specified), take its result, and persist it via
- * {@link SnippetService.save}.
+ * {@link RecordService.saveSelection}.
  *
  * Failure modes:
  *   - No tab id available → no-op.
@@ -105,30 +152,33 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
  *   - Empty selection → reader returns null → no-op.
  *   - Save throws → log and show error toast.
  */
-async function handleSaveSelection(tabId?: number): Promise<void> {
-  let resolvedTabId = tabId;
-  if (resolvedTabId === undefined) {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    resolvedTabId = tab?.id;
-  }
+async function handleSaveSelection(
+  tabId?: number,
+  prereadResult?: ReturnType<typeof readSelectionInPage>,
+): Promise<void> {
+  const resolvedTabId = tabId ?? (await activeTabId());
   if (resolvedTabId === undefined) {
     console.log('[mark-my-words] no active tab');
     return;
   }
 
   let result: ReturnType<typeof readSelectionInPage>;
-  try {
-    const injections = await chrome.scripting.executeScript({
-      target: { tabId: resolvedTabId },
-      func: readSelectionInPage,
-    });
-    result = injections[0]?.result ?? null;
-  } catch (error) {
-    console.error('[mark-my-words] failed to read selection:', error);
-    // We can't show a toast here because the page rejected our injection
-    // (chrome://, Web Store, PDF viewer, etc.). User has no feedback by
-    // design — those pages were never going to work anyway.
-    return;
+  if (prereadResult === undefined) {
+    try {
+      const injections = await chrome.scripting.executeScript({
+        target: { tabId: resolvedTabId },
+        func: readSelectionInPage,
+      });
+      result = injections[0]?.result ?? null;
+    } catch (error) {
+      console.error('[mark-my-words] failed to read selection:', error);
+      // We can't show a toast here because the page rejected our injection
+      // (chrome://, Web Store, PDF viewer, etc.). User has no feedback by
+      // design — those pages were never going to work anyway.
+      return;
+    }
+  } else {
+    result = prereadResult;
   }
 
   if (result === null) {
@@ -151,16 +201,16 @@ async function handleSaveSelection(tabId?: number): Promise<void> {
   const screenshotDataUrl = await captureScreenshot();
 
   try {
-    const saved = await snippets.save({
+    const saved = await records.saveSelection({
       ...result,
       ...(screenshotDataUrl !== undefined && { screenshotDataUrl }),
     });
-    console.log(`[mark-my-words] saved snippet ${saved.id}: ${saved.selectedText.slice(0, 60)}`);
+    console.log(`[mark-my-words] saved selection ${saved.id}: ${saved.selectedText.slice(0, 60)}`);
     // Tell any open Library tab so it can update without a refetch. The
     // typed message bus path (popup/options → SW) emits this in
-    // broadcastSnippetEvent; this path bypasses the dispatcher, so emit
+    // broadcastRecordEvent; this path bypasses the dispatcher, so emit
     // directly.
-    emitSnippetEvent({ type: 'snippet:created', snippet: saved });
+    emitRecordEvent({ type: 'record:created', record: saved });
     await presentSavedCard(resolvedTabId, saved);
   } catch (error) {
     console.error('[mark-my-words] save failed:', error);
@@ -169,11 +219,57 @@ async function handleSaveSelection(tabId?: number): Promise<void> {
   }
 }
 
-/** Compose card args from a freshly saved snippet and inject the card. */
-async function presentSavedCard(tabId: number, saved: Snippet): Promise<void> {
+/**
+ * Inject {@link readPageInPage} into the given tab (or the active tab
+ * if none specified) and persist the bare-page metadata via
+ * {@link RecordService.savePage}.
+ *
+ * Mirrors {@link handleSaveSelection}'s failure handling: restricted
+ * pages reject the injection silently; save errors surface via toast.
+ */
+async function handleSavePage(tabId?: number): Promise<void> {
+  const resolvedTabId = tabId ?? (await activeTabId());
+  if (resolvedTabId === undefined) {
+    console.log('[mark-my-words] no active tab');
+    return;
+  }
+
+  let pageMeta: ReturnType<typeof readPageInPage>;
+  try {
+    const injections = await chrome.scripting.executeScript({
+      target: { tabId: resolvedTabId },
+      func: readPageInPage,
+    });
+    const got = injections[0]?.result;
+    if (got === undefined) return;
+    pageMeta = got;
+  } catch (error) {
+    console.error('[mark-my-words] failed to read page metadata:', error);
+    return;
+  }
+
+  const screenshotDataUrl = await captureScreenshot();
+
+  try {
+    const saved = await records.savePage({
+      ...pageMeta,
+      ...(screenshotDataUrl !== undefined && { screenshotDataUrl }),
+    });
+    console.log(`[mark-my-words] saved page ${saved.id}: ${saved.pageTitle.slice(0, 60)}`);
+    emitRecordEvent({ type: 'record:created', record: saved });
+    await presentSavedCard(resolvedTabId, saved);
+  } catch (error) {
+    console.error('[mark-my-words] save failed:', error);
+    const msg = error instanceof Error ? error.message : 'unknown error';
+    await showToast(resolvedTabId, 'error', `Save failed: ${msg}`);
+  }
+}
+
+/** Compose card args from a freshly saved record and inject the card. */
+async function presentSavedCard(tabId: number, saved: Record): Promise<void> {
   const allTags = await collectAllTags();
   await showCard(tabId, {
-    snippetId: saved.id,
+    recordId: saved.id,
     currentTags: saved.tags ?? [],
     currentNote: saved.note ?? '',
     allTags,
@@ -182,14 +278,14 @@ async function presentSavedCard(tabId: number, saved: Snippet): Promise<void> {
 }
 
 /**
- * Compute the union of tags across all (non-archived) snippets, sorted
+ * Compute the union of tags across all (non-archived) records, sorted
  * alphabetically. Mirrors the options-page `allTags` derivation so the
  * suggestions row in the save card matches what the Library shows.
  */
 async function collectAllTags(): Promise<string[]> {
-  const all = await snippets.list({ archived: false });
+  const all = await records.list({ archived: false });
   const set = new Set<string>();
-  for (const s of all) for (const t of s.tags ?? []) set.add(t);
+  for (const r of all) for (const t of r.tags ?? []) set.add(t);
   return [...set].toSorted();
 }
 
@@ -254,45 +350,49 @@ async function showCard(tabId: number, args: SaveCardArgs): Promise<void> {
 }
 
 /**
- * Push a SnippetEvent to any open extension pages (e.g. the Library).
+ * Push a RecordEvent to any open extension pages (e.g. the Library).
  * Errors are suppressed — if no page is listening, sendMessage rejects
  * and we ignore it.
  */
-function emitSnippetEvent(event: SnippetEvent): void {
+function emitRecordEvent(event: RecordEvent): void {
   chrome.runtime.sendMessage(event).catch(() => {
     // No listener is the common case (no Library tab open) — swallow.
   });
 }
 
-/** Translate a dispatcher-handled message into the right SnippetEvent. */
-function broadcastSnippetEvent(msg: Message, value: unknown): void {
-  let event: SnippetEvent | null = null;
+/** Translate a dispatcher-handled message into the right RecordEvent. */
+function broadcastRecordEvent(msg: Message, value: unknown): void {
+  let event: RecordEvent | null = null;
   switch (msg.type) {
-    case 'snippet:save': {
-      event = { type: 'snippet:created', snippet: value as Snippet };
+    case 'record:save-selection':
+    case 'record:save-page': {
+      event = { type: 'record:created', record: value as Record };
 
       break;
     }
-    case 'snippet:delete': {
-      event = { type: 'snippet:deleted', id: msg.payload.id };
+    case 'record:delete': {
+      event = { type: 'record:deleted', id: msg.payload.id };
 
       break;
     }
-    case 'snippet:update':
-    case 'snippet:archive':
-    case 'snippet:unarchive': {
-      event = { type: 'snippet:updated', snippet: value as Snippet };
+    case 'record:update':
+    case 'record:archive':
+    case 'record:unarchive': {
+      event = { type: 'record:updated', record: value as Record };
 
       break;
     }
     // No default
   }
   if (event === null) return;
-  emitSnippetEvent(event);
+  emitRecordEvent(event);
 }
 
-function isOpenSnippetRequest(v: unknown): v is { type: 'ui:open-snippet'; id: string } {
+function isOpenRecordRequest(v: unknown): v is { type: 'ui:open-record'; id: string } {
   if (typeof v !== 'object' || v === null) return false;
-  const o = v as Record<string, unknown>;
-  return o['type'] === 'ui:open-snippet' && typeof o['id'] === 'string';
+  // Inline index signature instead of `Record<string, unknown>` — our
+  // `Record` type shadows the TS utility.
+  // eslint-disable-next-line @typescript-eslint/consistent-indexed-object-style
+  const o = v as { [k: string]: unknown };
+  return o['type'] === 'ui:open-record' && typeof o['id'] === 'string';
 }

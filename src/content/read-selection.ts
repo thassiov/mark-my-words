@@ -1,5 +1,5 @@
 /**
- * Result of {@link readSelectionInPage}. Shape matches `SnippetInput`
+ * Result of {@link readSelectionInPage}. Shape matches `SelectionInput`
  * but is duplicated here so this file has *no* imports — it gets
  * serialized via `chrome.scripting.executeScript({ func })` and runs in
  * the page context where bundler-introduced helpers wouldn't resolve.

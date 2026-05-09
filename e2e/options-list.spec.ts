@@ -1,18 +1,18 @@
 import { expect, test } from './fixtures.js';
-import { makeSnippet, openOptionsWith } from './seed.js';
+import { makeSelection, openOptionsWith } from './seed.js';
 
 const TINY_PNG =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=';
 
 test('list renders seeded snippets newest-first', async ({ context, extensionId }) => {
   const page = await openOptionsWith(context, extensionId, [
-    makeSnippet({
+    makeSelection({
       createdAt: '2026-01-01T10:00:00.000Z',
       selectedText: 'oldest snippet body',
       pageTitle: 'Old Page',
       sourceUrl: 'https://old.example.com/x',
     }),
-    makeSnippet({
+    makeSelection({
       createdAt: '2026-03-01T10:00:00.000Z',
       selectedText: 'newest snippet body',
       pageTitle: 'New Page',
@@ -30,19 +30,19 @@ test('list renders seeded snippets newest-first', async ({ context, extensionId 
 
 test('filter narrows by selectedText, title, and hostname', async ({ context, extensionId }) => {
   const page = await openOptionsWith(context, extensionId, [
-    makeSnippet({
+    makeSelection({
       createdAt: '2026-02-01T10:00:00.000Z',
       selectedText: 'apples are red',
       pageTitle: 'Fruits',
       sourceUrl: 'https://orchard.example.com/a',
     }),
-    makeSnippet({
+    makeSelection({
       createdAt: '2026-02-02T10:00:00.000Z',
       selectedText: 'bananas are yellow',
       pageTitle: 'Tropical',
       sourceUrl: 'https://tropics.example.com/b',
     }),
-    makeSnippet({
+    makeSelection({
       createdAt: '2026-02-03T10:00:00.000Z',
       selectedText: 'kale is green',
       pageTitle: 'Greens',
@@ -75,7 +75,7 @@ test('clicking a card opens the detail pane with text and metadata', async ({
   extensionId,
 }) => {
   const page = await openOptionsWith(context, extensionId, [
-    makeSnippet({
+    makeSelection({
       createdAt: '2026-02-10T10:00:00.000Z',
       selectedText: 'detailed selection content',
       contextBefore: 'leading words ',
@@ -100,7 +100,7 @@ test('clicking a card opens the detail pane with text and metadata', async ({
 
 test('detail close button hides the pane', async ({ context, extensionId }) => {
   const page = await openOptionsWith(context, extensionId, [
-    makeSnippet({
+    makeSelection({
       createdAt: '2026-02-15T10:00:00.000Z',
       selectedText: 'closeable snippet',
     }),
@@ -118,7 +118,7 @@ test('detail pane renders the captured screenshot when present', async ({
   extensionId,
 }) => {
   const page = await openOptionsWith(context, extensionId, [
-    makeSnippet({
+    makeSelection({
       createdAt: '2026-02-20T10:00:00.000Z',
       selectedText: 'snippet with image',
       screenshotDataUrl: TINY_PNG,

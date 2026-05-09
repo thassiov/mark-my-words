@@ -1,7 +1,7 @@
 import Dexie from 'dexie';
 import type { Table } from 'dexie';
 
-import type { Snippet } from '../shared/types.js';
+import type { Record } from '../shared/types.js';
 
 import type { Repository } from './repository.js';
 
@@ -11,14 +11,18 @@ import type { Repository } from './repository.js';
  * Schema indexes (the `'id, createdAt, sourceUrl'` syntax):
  *   - `id`         primary key
  *   - `createdAt`  indexed for newest-first queries
- *   - `sourceUrl`  indexed for "snippets from this domain" filters
+ *   - `sourceUrl`  indexed for "records from this domain" filters
  *
  * Other fields (selectedText, contextBefore, …, screenshotDataUrl) are
  * stored alongside but unindexed. Full-text search would need a
  * separate index strategy when we add it later.
+ *
+ * The IDB store name `snippets` is preserved from the pre-Record-rename
+ * era so existing user data keeps working without a Dexie version bump.
+ * Records of type 'page' simply omit the SelectionBody fields.
  */
 class MmwDatabase extends Dexie {
-  snippets!: Table<Snippet, string>;
+  snippets!: Table<Record, string>;
 
   constructor(name = 'mmw') {
     super(name);
@@ -31,32 +35,33 @@ class MmwDatabase extends Dexie {
 /**
  * `Repository<T>` implementation backed by Dexie / IndexedDB.
  *
- * Only typed for {@link Snippet} today since that's the only entity
- * type we persist. Generalizing later is mechanical (one Dexie table
- * per type).
- *
  * Persistence quota is the browser's IDB origin quota (typically
  * tens of percent of free disk) — not the chrome.storage.local 10 MB
  * cap that the old BrowserLocalRepo lived under.
+ *
+ * Reads apply a backwards-compat backfill: records persisted before
+ * the discriminator was introduced have no `type` field and are
+ * treated as selections (the only kind that existed at the time).
  */
-export class IdbRepo implements Repository<Snippet> {
-  private readonly table: Table<Snippet, string>;
+export class IdbRepo implements Repository<Record> {
+  private readonly table: Table<Record, string>;
 
   constructor(dbName?: string) {
     const db = new MmwDatabase(dbName);
     this.table = db.snippets;
   }
 
-  async getAll(): Promise<Snippet[]> {
-    return this.table.toArray();
+  async getAll(): Promise<Record[]> {
+    const all = await this.table.toArray();
+    return all.map((r) => withDefaultType(r));
   }
 
-  async getById(id: string): Promise<Snippet | null> {
+  async getById(id: string): Promise<Record | null> {
     const found = await this.table.get(id);
-    return found ?? null;
+    return found === undefined ? null : withDefaultType(found);
   }
 
-  async put(item: Snippet): Promise<void> {
+  async put(item: Record): Promise<void> {
     await this.table.put(item);
   }
 
@@ -67,4 +72,18 @@ export class IdbRepo implements Repository<Snippet> {
   async count(): Promise<number> {
     return this.table.count();
   }
+}
+
+/**
+ * Pre-discriminator records were always selections. Default the missing
+ * `type` so consumers can rely on the union narrowing. Typed via
+ * `unknown` because, at the IDB boundary, we genuinely don't know if
+ * the field is present yet.
+ */
+function withDefaultType(rec: Record): Record {
+  const raw = rec as unknown as { type?: unknown };
+  if (raw.type === undefined) {
+    return { ...rec, type: 'selection' } as Record;
+  }
+  return rec;
 }

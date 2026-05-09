@@ -4,10 +4,11 @@
 
 **Status:** alpha · WIP · do not depend on this.
 
-A WebExtension (Manifest V3) that lets you highlight any text on a web
-page, save it as a snippet with the source URL, page title, surrounding
-context, a screenshot of the page, and a timestamp. All data is stored
-locally in IndexedDB. No accounts, no servers, no telemetry.
+A WebExtension (Manifest V3) that captures records from any web page —
+either a **text selection** with surrounding context, or the **whole
+page** as a bookmark — along with the source URL, page title, a
+screenshot, and a timestamp. All data is stored locally in IndexedDB.
+No accounts, no servers, no telemetry.
 
 For architecture, message flow diagrams, file map, and dev workflow
 internals, see [docs/architecture.md](docs/architecture.md).
@@ -28,10 +29,12 @@ Load the unpacked extension:
 
 ## Usage
 
-- Select text on any page → right-click → **Save selection as snippet**
-- Or with text selected, press `Ctrl+Shift+S` (`Cmd+Shift+S` on macOS)
-- A toast confirms the save
-- Click the toolbar icon for the recent-snippets popup
+- Select text on any page → right-click → **Save selection**
+- Or right-click on a bare page → **Save page**
+- Or press `Ctrl+Shift+S` (`Cmd+Shift+S` on macOS) — saves the selection
+  if there is one, otherwise saves the page
+- A save card confirms the save, with inline tag/note actions
+- Click the toolbar icon for the recent-records popup
 - Right-click the icon → **Options** for the full browser
   (list + filter + detail pane with screenshot)
 

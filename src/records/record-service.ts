@@ -1,6 +1,13 @@
 import { nowIso } from '../lib/time.js';
 import { newId } from '../lib/ulid.js';
-import type { Snippet, SnippetEdit, SnippetInput } from '../shared/types.js';
+import type {
+  Page,
+  PageInput,
+  Record,
+  RecordEdit,
+  Selection,
+  SelectionInput,
+} from '../shared/types.js';
 import type { Repository } from '../storage/repository.js';
 
 /**
@@ -27,8 +34,8 @@ export interface ListOptions {
   offset?: number;
   /**
    * Filter by archive state.
-   *   - `false` (default): only active snippets (`archivedAt === undefined`).
-   *   - `true`: only archived snippets, sorted newest-archived first.
+   *   - `false` (default): only active records (`archivedAt === undefined`).
+   *   - `true`: only archived records, sorted newest-archived first.
    *   - `undefined` *via explicit pass*: behaves like `false`. Callers
    *     that want the unfiltered set should compose two `list` calls.
    */
@@ -36,46 +43,55 @@ export interface ListOptions {
 }
 
 /**
- * Domain service for snippets. Owns:
+ * Domain service for library records (selections + pages). Owns:
  * - id assignment (via {@link newId})
  * - timestamping (via {@link nowIso})
  * - sorting / pagination on read
  *
  * Persistence is delegated to the injected {@link Repository} —
- * `SnippetService` has no IO knowledge.
+ * `RecordService` has no IO knowledge.
  */
-export class SnippetService {
-  constructor(private readonly repo: Repository<Snippet>) {}
+export class RecordService {
+  constructor(private readonly repo: Repository<Record>) {}
 
-  /** Persist a new snippet. Assigns a ULID and matching createdAt/updatedAt. */
-  async save(input: SnippetInput): Promise<Snippet> {
+  /** Persist a new selection. Assigns a ULID, type='selection', and matching createdAt/updatedAt. */
+  async saveSelection(input: SelectionInput): Promise<Selection> {
     const now = nowIso();
-    const snippet: Snippet = {
+    const selection: Selection = {
       ...input,
       id: newId(),
+      type: 'selection',
       createdAt: now,
       updatedAt: now,
     };
-    if (input.tags !== undefined) {
-      const normalized = normalizeTags(input.tags);
-      if (normalized.length > 0) {
-        snippet.tags = normalized;
-      } else {
-        delete snippet.tags;
-      }
-    }
-    await this.repo.put(snippet);
-    return snippet;
+    applyTagNormalization(selection, input.tags);
+    await this.repo.put(selection);
+    return selection;
+  }
+
+  /** Persist a new page. Assigns a ULID, type='page', and matching createdAt/updatedAt. */
+  async savePage(input: PageInput): Promise<Page> {
+    const now = nowIso();
+    const page: Page = {
+      ...input,
+      id: newId(),
+      type: 'page',
+      createdAt: now,
+      updatedAt: now,
+    };
+    applyTagNormalization(page, input.tags);
+    await this.repo.put(page);
+    return page;
   }
 
   /**
-   * Return snippets in the requested archive state, sorted newest-first.
+   * Return records in the requested archive state, sorted newest-first.
    *
    * Active list (default): sort by `createdAt` desc; ULIDs break ties.
    * Archived list (`archived: true`): sort by `archivedAt` desc; if two
-   * snippets were archived in the same millisecond, fall back to id.
+   * records were archived in the same millisecond, fall back to id.
    */
-  async list(opts: ListOptions = {}): Promise<Snippet[]> {
+  async list(opts: ListOptions = {}): Promise<Record[]> {
     const archived = opts.archived ?? false;
     const all = await this.repo.getAll();
     const filtered = all.filter((s) =>
@@ -110,10 +126,10 @@ export class SnippetService {
     await this.repo.delete(id);
   }
 
-  async update(id: string, edit: SnippetEdit): Promise<Snippet> {
+  async update(id: string, edit: RecordEdit): Promise<Record> {
     const existing = await this.repo.getById(id);
-    if (existing === null) throw new Error(`Snippet ${id} not found`);
-    const updated: Snippet = { ...existing, updatedAt: nowIso() };
+    if (existing === null) throw new Error(`Record ${id} not found`);
+    const updated: Record = { ...existing, updatedAt: nowIso() };
     // `note` in edit distinguishes explicit `note: undefined` (clear) from key absent (no-op).
     if ('note' in edit) {
       if (edit.note === undefined) {
@@ -138,25 +154,36 @@ export class SnippetService {
     return updated;
   }
 
-  /** Move a snippet to the archived list. No-op (returns existing) if already archived. */
-  async archive(id: string): Promise<Snippet> {
+  /** Move a record to the archived list. No-op (returns existing) if already archived. */
+  async archive(id: string): Promise<Record> {
     const existing = await this.repo.getById(id);
-    if (existing === null) throw new Error(`Snippet ${id} not found`);
+    if (existing === null) throw new Error(`Record ${id} not found`);
     if (existing.archivedAt !== undefined) return existing;
     const now = nowIso();
-    const updated: Snippet = { ...existing, archivedAt: now, updatedAt: now };
+    const updated: Record = { ...existing, archivedAt: now, updatedAt: now };
     await this.repo.put(updated);
     return updated;
   }
 
-  /** Restore an archived snippet to the active list. No-op (returns existing) if already active. */
-  async unarchive(id: string): Promise<Snippet> {
+  /** Restore an archived record to the active list. No-op (returns existing) if already active. */
+  async unarchive(id: string): Promise<Record> {
     const existing = await this.repo.getById(id);
-    if (existing === null) throw new Error(`Snippet ${id} not found`);
+    if (existing === null) throw new Error(`Record ${id} not found`);
     if (existing.archivedAt === undefined) return existing;
-    const updated: Snippet = { ...existing, updatedAt: nowIso() };
+    const updated: Record = { ...existing, updatedAt: nowIso() };
     delete updated.archivedAt;
     await this.repo.put(updated);
     return updated;
+  }
+}
+
+/** Normalize tags in-place; drop the field if normalization leaves it empty. */
+function applyTagNormalization(target: { tags?: string[] }, raw: string[] | undefined): void {
+  if (raw === undefined) return;
+  const normalized = normalizeTags(raw);
+  if (normalized.length > 0) {
+    target.tags = normalized;
+  } else {
+    delete target.tags;
   }
 }
