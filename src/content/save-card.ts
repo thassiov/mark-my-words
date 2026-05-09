@@ -11,33 +11,33 @@ export interface SaveCardArgs {
   currentNote: string;
   /** All tags across the user's library, used to populate the suggestions row. */
   allTags: readonly string[];
-  /** Auto-dismiss budget for page 1 idle. Cancelled once the user engages. */
+  /** Auto-dismiss budget for the idle pill. Cancelled once the user engages. */
   visibleMs: number;
 }
 
 /**
- * Multi-page "save card" overlay shown in the page after a successful save.
+ * Save-confirmation toast injected into the page after a successful
+ * save. A single-line pill with three actions (VIEW / TAG / NOTE);
+ * clicking TAG or NOTE opens a panel directly below the pill that
+ * swaps content based on which button is active.
  *
  * **No module imports.** Shipped to the page context via
  * `chrome.scripting.executeScript({ func: showSaveCardInPage, args: [args] })`.
  * Anything referenced at runtime must be available in that context
  * (DOM globals are fine; closures over module-scope vars are not). For
- * the same reason, the inner builders cannot be hoisted to module scope —
- * the serialized function body would lose its references. Putting CSS at
- * module scope was a real bug for the same reason: the bundler left it
- * as a free variable in the serialized function source, throwing
- * ReferenceError in the page context.
+ * the same reason, the inner builders and the CSS string cannot be
+ * hoisted to module scope — the serialized function body would lose
+ * its references.
  *
- * Lives inside a closed Shadow DOM so neither the host page's CSS bleeds
- * in nor our styles leak out. CSS is delivered via a constructable
- * stylesheet (adoptedStyleSheets) so a strict page CSP `style-src`
- * does not block us.
+ * Lives inside a Shadow DOM (open mode for testability + dev-tools)
+ * so neither the host page's CSS bleeds in nor our styles leak out.
+ * CSS is delivered via a constructable stylesheet (adoptedStyleSheets)
+ * so a strict page CSP `style-src` does not block us.
  *
- * Three pages: idle (page 1) → tags (page 2) / note (page 3). Done/Save
- * fire `record:update` optimistically and return to page 1 with the
- * row label flipped to reflect the saved state.
+ * State machine: idle | tag-open | note-open. Done/Save fire
+ * `record:update` optimistically and return to idle.
  */
-/* eslint-disable max-lines-per-function, max-statements --
+/* eslint-disable max-lines-per-function, max-statements, unicorn/consistent-function-scoping --
    helpers and constants must live inside the function body to survive
    executeScript serialization (see top docstring). */
 export function showSaveCardInPage(args: SaveCardArgs): void {
@@ -45,25 +45,26 @@ export function showSaveCardInPage(args: SaveCardArgs): void {
   const HOST_ID = 'mmw-save-card-host';
   document.querySelector(`#${HOST_ID}`)?.remove();
 
-  // The full stylesheet must live inside the function body — see the
-  // disable-comment above. It is delivered via a constructable
-  // CSSStyleSheet (adoptedStyleSheets) so a strict page CSP `style-src`
-  // cannot block us.
+  // Tokens are tuned for in-page injection: light/dark mode aware,
+  // distinct per-button accents borrowed from the seahorse uiverse
+  // card (View=blue, Tag=neutral dark, Note=red).
   const CSS = `
 :host {
   --bg: hsl(0 0% 100%);
   --fg: hsl(240 10% 3.9%);
-  --card-bg: hsl(0 0% 100%);
-  --card-fg: hsl(240 10% 3.9%);
-  --primary: hsl(240 5.9% 10%);
-  --primary-fg: hsl(0 0% 98%);
   --muted: hsl(240 4.8% 95.9%);
   --muted-fg: hsl(240 3.8% 46.1%);
   --border: hsl(240 5.9% 90%);
   --input: hsl(240 5.9% 90%);
   --ring: hsl(240 5% 64.9%);
   --success: hsl(142.1 76.2% 36.3%);
-  --radius: 0.5rem;
+  --view-accent: hsl(232 62% 49%);
+  --view-accent-fg: hsl(0 0% 98%);
+  --tag-accent: hsl(0 0% 10%);
+  --tag-accent-fg: hsl(0 0% 98%);
+  --note-accent: hsl(0 65% 43%);
+  --note-accent-fg: hsl(0 0% 98%);
+  --radius: 0.875rem;
   --shadow: 0 10px 24px -6px rgba(0, 0, 0, 0.18), 0 4px 8px -4px rgba(0, 0, 0, 0.08);
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
@@ -71,68 +72,97 @@ export function showSaveCardInPage(args: SaveCardArgs): void {
   :host {
     --bg: hsl(240 10% 3.9%);
     --fg: hsl(0 0% 98%);
-    --card-bg: hsl(240 10% 3.9%);
-    --card-fg: hsl(0 0% 98%);
-    --primary: hsl(0 0% 98%);
-    --primary-fg: hsl(240 5.9% 10%);
     --muted: hsl(240 3.7% 15.9%);
     --muted-fg: hsl(240 5% 64.9%);
     --border: hsl(240 3.7% 15.9%);
     --input: hsl(240 3.7% 15.9%);
     --ring: hsl(240 4.9% 83.9%);
     --success: hsl(142.1 70.6% 45.3%);
+    --view-accent: hsl(232 80% 70%);
+    --view-accent-fg: hsl(240 10% 3.9%);
+    --tag-accent: hsl(0 0% 88%);
+    --tag-accent-fg: hsl(240 10% 3.9%);
+    --note-accent: hsl(0 70% 60%);
+    --note-accent-fg: hsl(240 10% 3.9%);
     --shadow: 0 10px 24px -6px rgba(0, 0, 0, 0.6), 0 4px 8px -4px rgba(0, 0, 0, 0.4);
   }
 }
-.card {
-  width: 480px;
-  max-width: calc(100vw - 32px);
-  background: var(--card-bg);
-  color: var(--card-fg);
+
+.toast { display: flex; flex-direction: column; gap: 8px; width: 480px; max-width: calc(100vw - 32px); }
+
+.pill {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  font-family: var(--font);
+  display: flex;
+  align-items: stretch;
+  padding: 6px;
+  gap: 4px;
+}
+.pill__status {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px 8px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--success);
+  border-right: 1px solid var(--border);
+  margin-right: 4px;
+  white-space: nowrap;
+}
+.btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.btn .icon { font-size: 13px; line-height: 1; }
+.btn--view { color: var(--view-accent); }
+.btn--view:hover, .btn--view.is-active {
+  background: var(--view-accent); color: var(--view-accent-fg);
+}
+.btn--tag { color: var(--tag-accent); }
+.btn--tag:hover, .btn--tag.is-active {
+  background: var(--tag-accent); color: var(--tag-accent-fg);
+}
+.btn--note { color: var(--note-accent); }
+.btn--note:hover, .btn--note.is-active {
+  background: var(--note-accent); color: var(--note-accent-fg);
+}
+
+.panel {
+  background: var(--bg);
+  color: var(--fg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   font-family: var(--font);
   font-size: 14px;
-  line-height: 1.4;
   padding: 16px;
-  box-sizing: border-box;
+  animation: panel-in 180ms ease both;
 }
-.page { display: none; }
-.page.is-active { display: block; animation: page-in 180ms ease both; }
-@keyframes page-in {
-  from { opacity: 0; transform: translateX(8px); }
-  to   { opacity: 1; transform: translateX(0); }
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-.header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-.status { font-weight: 600; color: var(--success); }
-.title  { font-weight: 600; }
-.view-link {
-  margin-left: auto; background: transparent; border: 0;
-  padding: 4px 6px; font: inherit; color: var(--muted-fg);
-  cursor: pointer; border-radius: 6px;
-}
-.view-link:hover { background: var(--muted); color: var(--card-fg); }
-.back {
-  background: transparent; border: 1px solid var(--border);
-  border-radius: 6px; width: 28px; height: 28px;
-  font: inherit; font-size: 16px; line-height: 1;
-  color: var(--card-fg); cursor: pointer;
-}
-.back:hover { background: var(--muted); }
-.row {
-  display: flex; align-items: center; gap: 12px; width: 100%;
-  padding: 14px 14px; margin-bottom: 8px;
-  background: transparent; border: 1px solid var(--border);
-  border-radius: var(--radius); font: inherit; font-size: 15px;
-  color: var(--card-fg); cursor: pointer; text-align: left;
-  transition: background 120ms ease, border-color 120ms ease;
-}
-.row:last-child { margin-bottom: 0; }
-.row:hover { background: var(--muted); border-color: var(--ring); }
-.row-icon  { font-size: 18px; width: 24px; text-align: center; }
-.row-label { flex: 1; font-weight: 500; }
-.row-chev  { color: var(--muted-fg); font-size: 18px; }
+
 .chip-input {
   display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
   padding: 8px 10px; border: 1px solid var(--input);
@@ -143,7 +173,7 @@ export function showSaveCardInPage(args: SaveCardArgs): void {
 .chip {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 2px 4px 2px 8px; background: var(--muted);
-  color: var(--card-fg); border-radius: 999px;
+  color: var(--fg); border-radius: 999px;
   font-size: 12px; line-height: 1.6;
 }
 .chip-x {
@@ -152,11 +182,12 @@ export function showSaveCardInPage(args: SaveCardArgs): void {
   width: 18px; height: 18px; border-radius: 999px;
   display: inline-flex; align-items: center; justify-content: center;
 }
-.chip-x:hover { background: var(--border); color: var(--card-fg); }
+.chip-x:hover { background: var(--border); color: var(--fg); }
 .chip-text {
   flex: 1; min-width: 80px; border: 0; background: transparent;
-  outline: none; font: inherit; color: var(--card-fg); padding: 4px 0;
+  outline: none; font: inherit; color: var(--fg); padding: 4px 0;
 }
+
 .suggestions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; margin-bottom: 12px; }
 .suggestions-label { color: var(--muted-fg); font-size: 12px; margin-right: 4px; }
 .sugg {
@@ -164,27 +195,34 @@ export function showSaveCardInPage(args: SaveCardArgs): void {
   border-radius: 999px; padding: 2px 8px; font: inherit;
   font-size: 12px; color: var(--muted-fg); cursor: pointer;
 }
-.sugg:hover { background: var(--muted); color: var(--card-fg); border-style: solid; }
+.sugg:hover { background: var(--muted); color: var(--fg); border-style: solid; }
+
 .note-text {
   width: 100%; box-sizing: border-box; padding: 10px 12px;
   border: 1px solid var(--input); border-radius: var(--radius);
-  background: var(--bg); color: var(--card-fg); font: inherit;
+  background: var(--bg); color: var(--fg); font: inherit;
   font-size: 14px; resize: vertical; min-height: 96px;
-  outline: none; margin-bottom: 12px;
+  outline: none;
 }
 .note-text:focus { border-color: var(--ring); box-shadow: 0 0 0 3px hsl(240 5% 64.9% / 0.15); }
-.footer { display: flex; justify-content: flex-end; }
-.footer-split { justify-content: space-between; }
-.btn {
-  font: inherit; font-size: 14px; padding: 8px 14px;
-  border-radius: var(--radius); cursor: pointer;
+
+.panel__footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.action {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 8px 14px;
+  border-radius: 10px;
+  cursor: pointer;
   border: 1px solid transparent;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
-.btn-primary { background: var(--primary); color: var(--primary-fg); }
-.btn-primary:hover { filter: brightness(1.1); }
-.btn-ghost { background: transparent; border-color: var(--border); color: var(--card-fg); }
-.btn-ghost:hover { background: var(--muted); }
+.action--primary { background: var(--fg); color: var(--bg); }
+.action--primary:hover { filter: brightness(1.1); }
+.action--ghost { background: transparent; border-color: var(--border); color: var(--fg); }
+.action--ghost:hover { background: var(--muted); }
 `;
 
   // ------------------------------------------------------------------
@@ -192,24 +230,12 @@ export function showSaveCardInPage(args: SaveCardArgs): void {
   // ------------------------------------------------------------------
   const SUGGESTION_CAP = 8;
   const initialChips = [...currentTags];
-  // Suggestions exclude tags already on the record so we never show a
-  // suggestion that would no-op when clicked.
   const applied = new Set(initialChips);
   const suggestions = allTags.filter((t) => !applied.has(t)).slice(0, SUGGESTION_CAP);
 
-  // Last-saved state. Drives the page-1 row labels. Updated only on
-  // Done/Save click — the in-DOM chip set and textarea value are the
-  // working draft and may diverge from this until committed.
-  let savedTagCount = currentTags.length;
-  let noteSaved = currentNote.length > 0;
-
-  // Refs into page 1, populated by buildPage1, mutated by syncRowLabels.
-  let tagRow: HTMLElement;
-  let noteRow: HTMLElement;
-
-  // Auto-dismiss handle. Declared up here because `showPage('1')` runs
-  // before the bottom of the function body and (transitively) reads it
-  // — declaring lower would put it in the temporal dead zone.
+  // State machine: which panel (if any) is open. Auto-dismiss only
+  // fires from idle.
+  let active: 'tag' | 'note' | null = null;
   let dismissTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ------------------------------------------------------------------
@@ -223,219 +249,103 @@ export function showSaveCardInPage(args: SaveCardArgs): void {
     right: '16px',
     zIndex: '2147483647',
   });
-  // Open mode: same CSS isolation as closed, but dev-tools inspection
-  // and tests can reach in via `host.shadowRoot`. The real isolation we
-  // care about is the CSS one, which is identical across modes.
   const shadow = host.attachShadow({ mode: 'open' });
-
   const sheet = new CSSStyleSheet();
   sheet.replaceSync(CSS);
   shadow.adoptedStyleSheets = [sheet];
 
-  // ------------------------------------------------------------------
-  // Card structure
-  // ------------------------------------------------------------------
-  const card = document.createElement('div');
-  card.className = 'card';
-  card.setAttribute('role', 'dialog');
-  card.setAttribute('aria-label', 'Save options');
-  shadow.append(card);
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.setAttribute('role', 'status');
+  toast.setAttribute('aria-label', 'Saved');
+  shadow.append(toast);
 
-  card.append(buildPage1(), buildPage2(), buildPage3());
-  syncRowLabels();
+  // ------------------------------------------------------------------
+  // Pill (status + 3 buttons)
+  // ------------------------------------------------------------------
+  const pill = document.createElement('div');
+  pill.className = 'pill';
+
+  const status = document.createElement('span');
+  status.className = 'pill__status';
+  status.textContent = '✓ Saved';
+  pill.append(status);
+
+  const viewBtn = buildActionButton('view', '↗', 'View');
+  viewBtn.addEventListener('click', () => {
+    void chrome.runtime.sendMessage({ type: 'ui:open-record', id: recordId });
+    dismiss();
+  });
+  pill.append(viewBtn);
+
+  const tagBtn = buildActionButton('tag', '🏷', 'Tag');
+  tagBtn.addEventListener('click', () => {
+    setActive(active === 'tag' ? null : 'tag');
+  });
+  pill.append(tagBtn);
+
+  const noteBtn = buildActionButton('note', '✎', 'Note');
+  noteBtn.addEventListener('click', () => {
+    setActive(active === 'note' ? null : 'note');
+  });
+  pill.append(noteBtn);
+
+  toast.append(pill);
+
+  // Panel slot — appended/removed by setActive.
+  let panelEl: HTMLElement | null = null;
 
   document.documentElement.append(host);
-
-  // Page 1 is active on mount.
-  showPage('1');
   startDismissTimer();
 
   // ------------------------------------------------------------------
-  // Page builders
+  // State transitions
   // ------------------------------------------------------------------
-  function buildPage1(): HTMLElement {
-    const page = document.createElement('div');
-    page.className = 'page';
-    page.dataset['page'] = '1';
-
-    const header = document.createElement('header');
-    header.className = 'header';
-    const status = document.createElement('span');
-    status.className = 'status';
-    status.textContent = '✓  Saved';
-    const view = document.createElement('button');
-    view.className = 'view-link';
-    view.type = 'button';
-    view.textContent = 'View →';
-    view.addEventListener('click', () => {
-      void chrome.runtime.sendMessage({ type: 'ui:open-record', id: recordId });
-      dismiss();
-    });
-    header.append(status, view);
-
-    tagRow = buildRowButton('🏷', 'Tag it', () => {
-      showPage('2');
-    });
-    noteRow = buildRowButton('✎', 'Add a note', () => {
-      showPage('3');
-    });
-    page.append(header, tagRow, noteRow);
-    return page;
-  }
-
-  function buildPage2(): HTMLElement {
-    const page = document.createElement('div');
-    page.className = 'page';
-    page.dataset['page'] = '2';
-
-    page.append(buildBackHeader('Tags'));
-
-    const chipBox = document.createElement('div');
-    chipBox.className = 'chip-input';
-    for (const t of initialChips) chipBox.append(buildChip(t));
-
-    const input = document.createElement('input');
-    input.className = 'chip-text';
-    input.type = 'text';
-    input.placeholder = 'Tag…';
-    input.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Enter' && input.value.trim() !== '') {
-        ev.preventDefault();
-        chipBox.insertBefore(buildChip(input.value.trim()), input);
-        input.value = '';
-      } else if (ev.key === 'Backspace' && input.value === '') {
-        const last = chipBox.querySelector<HTMLElement>('.chip:last-of-type');
-        last?.remove();
-      }
-    });
-    chipBox.append(input);
-    chipBox.addEventListener('click', (ev) => {
-      // Click anywhere in the chip box to focus the input.
-      if (ev.target === chipBox) input.focus();
-    });
-    page.append(chipBox);
-
-    const sugg = document.createElement('div');
-    sugg.className = 'suggestions';
-    const suggLabel = document.createElement('span');
-    suggLabel.className = 'suggestions-label';
-    suggLabel.textContent = 'Suggestions';
-    sugg.append(suggLabel);
-    for (const s of suggestions) {
-      const b = document.createElement('button');
-      b.className = 'sugg';
-      b.type = 'button';
-      b.textContent = s;
-      b.addEventListener('click', () => {
-        chipBox.insertBefore(buildChip(s), input);
-        input.focus();
+  function setActive(next: 'tag' | 'note' | null): void {
+    active = next;
+    // View is not a panel state — it dismisses the toast on click.
+    tagBtn.classList.toggle('is-active', next === 'tag');
+    noteBtn.classList.toggle('is-active', next === 'note');
+    panelEl?.remove();
+    panelEl = null;
+    if (next === 'tag') {
+      panelEl = buildTagPanel();
+      toast.append(panelEl);
+      cancelDismissTimer();
+      requestAnimationFrame(() => {
+        panelEl?.querySelector<HTMLInputElement>('.chip-text')?.focus();
       });
-      sugg.append(b);
+    } else if (next === 'note') {
+      panelEl = buildNotePanel();
+      toast.append(panelEl);
+      cancelDismissTimer();
+      requestAnimationFrame(() => {
+        panelEl?.querySelector<HTMLTextAreaElement>('.note-text')?.focus();
+      });
+    } else {
+      // Returning to idle restarts the auto-dismiss budget. Engagement
+      // (hover/focus) still wins via the existing cancel listeners.
+      startDismissTimer();
     }
-    page.append(sugg);
-
-    const footer = document.createElement('div');
-    footer.className = 'footer';
-    const done = document.createElement('button');
-    done.className = 'btn btn-primary';
-    done.type = 'button';
-    done.textContent = 'Done';
-    done.addEventListener('click', () => {
-      const tags = collectChipTags(chipBox);
-      sendUpdate({ tags });
-      savedTagCount = tags.length;
-      syncRowLabels();
-      showPage('1');
-    });
-    footer.append(done);
-    page.append(footer);
-
-    return page;
   }
 
-  function buildPage3(): HTMLElement {
-    const page = document.createElement('div');
-    page.className = 'page';
-    page.dataset['page'] = '3';
-
-    page.append(buildBackHeader('Note'));
-
-    const ta = document.createElement('textarea');
-    ta.className = 'note-text';
-    ta.placeholder = 'Worth referencing later…';
-    ta.rows = 4;
-    ta.value = currentNote;
-    page.append(ta);
-
-    const footer = document.createElement('div');
-    footer.className = 'footer footer-split';
-    const cancel = document.createElement('button');
-    cancel.className = 'btn btn-ghost';
-    cancel.type = 'button';
-    cancel.textContent = 'Cancel';
-    cancel.addEventListener('click', () => {
-      // Discard the working draft, restore to last-saved.
-      ta.value = currentNote;
-      showPage('1');
-    });
-    const save = document.createElement('button');
-    save.className = 'btn btn-primary';
-    save.type = 'button';
-    save.textContent = 'Save';
-    save.addEventListener('click', () => {
-      const note = ta.value;
-      sendUpdate({ note });
-      noteSaved = note.length > 0;
-      syncRowLabels();
-      showPage('1');
-    });
-    footer.append(cancel, save);
-    page.append(footer);
-
-    // Save on Enter, newline on Shift+Enter, dismiss-edit on Esc.
-    ta.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Enter' && !ev.shiftKey) {
-        ev.preventDefault();
-        save.click();
-      }
-    });
-
-    return page;
-  }
-
-  function buildBackHeader(title: string): HTMLElement {
-    const header = document.createElement('header');
-    header.className = 'header';
-    const back = document.createElement('button');
-    back.className = 'back';
-    back.type = 'button';
-    back.setAttribute('aria-label', 'Back');
-    back.textContent = '←';
-    back.addEventListener('click', () => {
-      showPage('1');
-    });
-    const t = document.createElement('span');
-    t.className = 'title';
-    t.textContent = title;
-    header.append(back, t);
-    return header;
-  }
-
-  function buildRowButton(icon: string, label: string, onClick: () => void): HTMLElement {
+  // ------------------------------------------------------------------
+  // Builders
+  // ------------------------------------------------------------------
+  function buildActionButton(
+    kind: 'view' | 'tag' | 'note',
+    icon: string,
+    label: string,
+  ): HTMLButtonElement {
     const b = document.createElement('button');
-    b.className = 'row';
     b.type = 'button';
+    b.className = `btn btn--${kind}`;
     const i = document.createElement('span');
-    i.className = 'row-icon';
+    i.className = 'icon';
     i.textContent = icon;
     const l = document.createElement('span');
-    l.className = 'row-label';
     l.textContent = label;
-    const c = document.createElement('span');
-    c.className = 'row-chev';
-    c.textContent = '›';
-    b.append(i, l, c);
-    b.addEventListener('click', onClick);
+    b.append(i, l);
     return b;
   }
 
@@ -457,31 +367,6 @@ export function showSaveCardInPage(args: SaveCardArgs): void {
     return chip;
   }
 
-  /**
-   * Reflect the last-saved state in the page-1 row labels. Called on
-   * mount and after every successful Done/Save.
-   */
-  function syncRowLabels(): void {
-    if (savedTagCount > 0) {
-      const plural = savedTagCount === 1 ? '' : 's';
-      setRowLabel(tagRow, '✓', `${String(savedTagCount)} tag${plural}`);
-    } else {
-      setRowLabel(tagRow, '🏷', 'Tag it');
-    }
-    if (noteSaved) {
-      setRowLabel(noteRow, '✓', 'Note added');
-    } else {
-      setRowLabel(noteRow, '✎', 'Add a note');
-    }
-  }
-
-  function setRowLabel(row: HTMLElement, icon: string, label: string): void {
-    const iconEl = row.querySelector<HTMLElement>('.row-icon');
-    const labelEl = row.querySelector<HTMLElement>('.row-label');
-    if (iconEl) iconEl.textContent = icon;
-    if (labelEl) labelEl.textContent = label;
-  }
-
   function collectChipTags(chipBox: HTMLElement): string[] {
     const out: string[] = [];
     for (const el of chipBox.querySelectorAll<HTMLElement>('.chip')) {
@@ -491,8 +376,116 @@ export function showSaveCardInPage(args: SaveCardArgs): void {
     return out;
   }
 
+  function buildTagPanel(): HTMLElement {
+    const panel = document.createElement('div');
+    panel.className = 'panel';
+    panel.dataset['kind'] = 'tag';
+
+    const chipBox = document.createElement('div');
+    chipBox.className = 'chip-input';
+    for (const t of initialChips) chipBox.append(buildChip(t));
+
+    const input = document.createElement('input');
+    input.className = 'chip-text';
+    input.type = 'text';
+    input.placeholder = 'Tag…';
+    input.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' && input.value.trim() !== '') {
+        ev.preventDefault();
+        chipBox.insertBefore(buildChip(input.value.trim()), input);
+        input.value = '';
+      } else if (ev.key === 'Backspace' && input.value === '') {
+        const last = chipBox.querySelector<HTMLElement>('.chip:last-of-type');
+        last?.remove();
+      }
+    });
+    chipBox.append(input);
+    chipBox.addEventListener('click', (ev) => {
+      if (ev.target === chipBox) input.focus();
+    });
+    panel.append(chipBox);
+
+    if (suggestions.length > 0) {
+      const sugg = document.createElement('div');
+      sugg.className = 'suggestions';
+      const suggLabel = document.createElement('span');
+      suggLabel.className = 'suggestions-label';
+      suggLabel.textContent = 'Suggestions';
+      sugg.append(suggLabel);
+      for (const s of suggestions) {
+        const b = document.createElement('button');
+        b.className = 'sugg';
+        b.type = 'button';
+        b.textContent = s;
+        b.addEventListener('click', () => {
+          chipBox.insertBefore(buildChip(s), input);
+          input.focus();
+        });
+        sugg.append(b);
+      }
+      panel.append(sugg);
+    }
+
+    const footer = document.createElement('div');
+    footer.className = 'panel__footer';
+    const done = document.createElement('button');
+    done.className = 'action action--primary';
+    done.type = 'button';
+    done.textContent = 'Done';
+    done.addEventListener('click', () => {
+      sendUpdate({ tags: collectChipTags(chipBox) });
+      setActive(null);
+    });
+    footer.append(done);
+    panel.append(footer);
+
+    return panel;
+  }
+
+  function buildNotePanel(): HTMLElement {
+    const panel = document.createElement('div');
+    panel.className = 'panel';
+    panel.dataset['kind'] = 'note';
+
+    const ta = document.createElement('textarea');
+    ta.className = 'note-text';
+    ta.placeholder = 'Worth referencing later…';
+    ta.rows = 4;
+    ta.value = currentNote;
+    ta.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' && !ev.shiftKey) {
+        ev.preventDefault();
+        save.click();
+      }
+    });
+    panel.append(ta);
+
+    const footer = document.createElement('div');
+    footer.className = 'panel__footer';
+    const cancel = document.createElement('button');
+    cancel.className = 'action action--ghost';
+    cancel.type = 'button';
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', () => {
+      ta.value = currentNote;
+      setActive(null);
+    });
+    const save = document.createElement('button');
+    save.className = 'action action--primary';
+    save.type = 'button';
+    save.textContent = 'Save';
+    save.addEventListener('click', () => {
+      sendUpdate({ note: ta.value });
+      setActive(null);
+    });
+    footer.append(cancel, save);
+    panel.append(footer);
+
+    return panel;
+  }
+
   /**
-   * Fire-and-forget record:update. Optimistic UI — we navigate away
+   * Fire-and-forget record:update. Optimistic UI — we close the panel
    * before the response, so failures are logged for diagnostics rather
    * than rolled back. Wrapped to suppress unhandled-rejection noise.
    */
@@ -509,28 +502,6 @@ export function showSaveCardInPage(args: SaveCardArgs): void {
       });
   }
 
-  // ------------------------------------------------------------------
-  // Navigation + dismiss
-  // ------------------------------------------------------------------
-  function showPage(id: '1' | '2' | '3'): void {
-    for (const p of card.querySelectorAll<HTMLElement>('.page')) {
-      p.classList.toggle('is-active', p.dataset['page'] === id);
-    }
-    if (id === '1') {
-      startDismissTimer();
-    } else {
-      cancelDismissTimer();
-      // Autofocus into the active input on the page.
-      requestAnimationFrame(() => {
-        const target =
-          id === '2'
-            ? card.querySelector<HTMLInputElement>('.chip-text')
-            : card.querySelector<HTMLTextAreaElement>('.note-text');
-        target?.focus();
-      });
-    }
-  }
-
   function startDismissTimer(): void {
     cancelDismissTimer();
     dismissTimer = setTimeout(dismiss, visibleMs);
@@ -541,25 +512,26 @@ export function showSaveCardInPage(args: SaveCardArgs): void {
       dismissTimer = null;
     }
   }
-
   function dismiss(): void {
     cancelDismissTimer();
     host.remove();
   }
 
-  // Cancel auto-dismiss on any user engagement; never resume.
+  // ------------------------------------------------------------------
+  // Engagement listeners
+  // ------------------------------------------------------------------
+  // Cancel auto-dismiss on hover/focus. Never resumes — once the user
+  // engages, dismissal is their job.
   host.addEventListener('mouseenter', cancelDismissTimer);
   host.addEventListener('focusin', cancelDismissTimer);
 
-  // Escape: page 2/3 → back; page 1 → dismiss.
+  // ESC: panel-open → returns to idle; idle → dismisses entire toast.
   host.addEventListener('keydown', (ev) => {
     if (ev.key !== 'Escape') return;
-    const active = card.querySelector<HTMLElement>('.page.is-active');
-    const id = active?.dataset['page'];
-    if (id === '1') {
+    if (active === null) {
       dismiss();
     } else {
-      showPage('1');
+      setActive(null);
     }
   });
 }

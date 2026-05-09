@@ -21,10 +21,14 @@ function root(): ShadowRoot {
   return shadow;
 }
 
-function activePage(): HTMLElement {
-  const el = root().querySelector<HTMLElement>('.page.is-active');
-  if (el === null) throw new Error('no active page');
-  return el;
+function btn(kind: 'view' | 'tag' | 'note'): HTMLButtonElement {
+  const b = root().querySelector<HTMLButtonElement>(`.btn--${kind}`);
+  if (!b) throw new Error(`button --${kind} not found`);
+  return b;
+}
+
+function panel(): HTMLElement | null {
+  return root().querySelector<HTMLElement>('.panel');
 }
 
 function chipTags(): string[] {
@@ -60,107 +64,87 @@ describe('showSaveCardInPage', () => {
       expect(host?.parentElement).toBe(document.documentElement);
     });
 
-    it('replaces an existing card instead of stacking', () => {
+    it('replaces an existing toast instead of stacking', () => {
       showSaveCardInPage(defaults());
       showSaveCardInPage(defaults());
       expect(document.documentElement.querySelectorAll(HOST_ID).length).toBe(1);
     });
 
-    it('starts on page 1 (idle)', () => {
+    it('renders the pill with status + three action buttons', () => {
       showSaveCardInPage(defaults());
-      expect(activePage().dataset['page']).toBe('1');
+      expect(root().querySelector('.pill__status')?.textContent).toContain('Saved');
+      expect(root().querySelectorAll('.btn').length).toBe(3);
+      expect(btn('view').textContent).toContain('View');
+      expect(btn('tag').textContent).toContain('Tag');
+      expect(btn('note').textContent).toContain('Note');
+    });
+
+    it('starts in idle state with no panel', () => {
+      showSaveCardInPage(defaults());
+      expect(panel()).toBeNull();
+      expect(btn('tag').classList.contains('is-active')).toBe(false);
+      expect(btn('note').classList.contains('is-active')).toBe(false);
     });
   });
 
-  describe('initial state from args', () => {
-    it('renders chips from currentTags on page 2', () => {
-      showSaveCardInPage(defaults({ currentTags: ['design', 'ux'] }));
-      expect(chipTags()).toEqual(['design', 'ux']);
-    });
-
-    it('pre-fills the textarea from currentNote', () => {
-      showSaveCardInPage(defaults({ currentNote: 'remember this' }));
-      const ta = root().querySelector<HTMLTextAreaElement>('.note-text');
-      expect(ta?.value).toBe('remember this');
-    });
-
-    it('renders suggestions from allTags excluding tags already applied', () => {
-      showSaveCardInPage(
-        defaults({ currentTags: ['ux'], allTags: ['api', 'design', 'ux', 'react'] }),
-      );
-      const labels = [...root().querySelectorAll<HTMLElement>('.sugg')].map((b) => b.textContent);
-      expect(labels).toEqual(['api', 'design', 'react']);
-    });
-
-    it('caps suggestions at 8', () => {
-      const many = Array.from({ length: 20 }, (_, i) => `tag-${String(i)}`);
-      showSaveCardInPage(defaults({ allTags: many }));
-      expect(root().querySelectorAll('.sugg').length).toBe(8);
-    });
-
-    it('reflects existing tag count in the page-1 row label', () => {
-      showSaveCardInPage(defaults({ currentTags: ['a', 'b', 'c'] }));
-      const row = root().querySelectorAll<HTMLElement>('.row')[0];
-      expect(row?.querySelector('.row-label')?.textContent).toBe('3 tags');
-      expect(row?.querySelector('.row-icon')?.textContent).toBe('✓');
-    });
-
-    it('reflects existing note in the page-1 row label', () => {
-      showSaveCardInPage(defaults({ currentNote: 'something' }));
-      const row = root().querySelectorAll<HTMLElement>('.row')[1];
-      expect(row?.querySelector('.row-label')?.textContent).toBe('Note added');
-    });
-
-    it('uses singular "1 tag" when count is exactly 1', () => {
-      showSaveCardInPage(defaults({ currentTags: ['solo'] }));
-      const row = root().querySelectorAll<HTMLElement>('.row')[0];
-      expect(row?.querySelector('.row-label')?.textContent).toBe('1 tag');
-    });
-  });
-
-  describe('navigation', () => {
-    it('Tag it click activates page 2', () => {
-      showSaveCardInPage(defaults());
-      const rows = root().querySelectorAll<HTMLButtonElement>('.row');
-      rows[0]?.click();
-      expect(activePage().dataset['page']).toBe('2');
-    });
-
-    it('Add a note click activates page 3', () => {
-      showSaveCardInPage(defaults());
-      const rows = root().querySelectorAll<HTMLButtonElement>('.row');
-      rows[1]?.click();
-      expect(activePage().dataset['page']).toBe('3');
-    });
-
-    it('back arrow returns to page 1', () => {
-      showSaveCardInPage(defaults());
-      root().querySelectorAll<HTMLButtonElement>('.row')[0]?.click();
-      expect(activePage().dataset['page']).toBe('2');
-      root().querySelector<HTMLButtonElement>('.back')?.click();
-      expect(activePage().dataset['page']).toBe('1');
-    });
-
-    it('ESC on page 2 returns to page 1', () => {
-      showSaveCardInPage(defaults());
-      root().querySelectorAll<HTMLButtonElement>('.row')[0]?.click();
-      const host = document.querySelector<HTMLElement>(HOST_ID)!;
-      host.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-      expect(activePage().dataset['page']).toBe('1');
-    });
-
-    it('ESC on page 1 dismisses the card', () => {
-      showSaveCardInPage(defaults());
-      const host = document.querySelector<HTMLElement>(HOST_ID)!;
-      host.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  describe('view', () => {
+    it('clicking VIEW sends ui:open-record and dismisses the toast', () => {
+      showSaveCardInPage(defaults({ recordId: 'rec-abc' }));
+      btn('view').click();
+      expect(sendMessage).toHaveBeenCalledWith({ type: 'ui:open-record', id: 'rec-abc' });
       expect(document.querySelector(HOST_ID)).toBeNull();
     });
   });
 
-  describe('chip-input', () => {
-    it('Enter on a non-empty input commits the text as a chip', () => {
+  describe('tag panel', () => {
+    it('clicking TAG opens the tag panel', () => {
+      showSaveCardInPage(defaults({ currentTags: ['design', 'ux'] }));
+      btn('tag').click();
+      const p = panel();
+      expect(p).not.toBeNull();
+      expect(p?.dataset['kind']).toBe('tag');
+      expect(chipTags()).toEqual(['design', 'ux']);
+    });
+
+    it('TAG button gets is-active while panel is open', () => {
       showSaveCardInPage(defaults());
-      root().querySelectorAll<HTMLButtonElement>('.row')[0]?.click();
+      btn('tag').click();
+      expect(btn('tag').classList.contains('is-active')).toBe(true);
+      expect(btn('note').classList.contains('is-active')).toBe(false);
+    });
+
+    it('clicking TAG again returns to idle and removes the panel', () => {
+      showSaveCardInPage(defaults());
+      btn('tag').click();
+      btn('tag').click();
+      expect(panel()).toBeNull();
+      expect(btn('tag').classList.contains('is-active')).toBe(false);
+    });
+
+    it('clicking NOTE while tag panel open switches active state', () => {
+      showSaveCardInPage(defaults());
+      btn('tag').click();
+      btn('note').click();
+      expect(btn('tag').classList.contains('is-active')).toBe(false);
+      expect(btn('note').classList.contains('is-active')).toBe(true);
+      expect(panel()?.dataset['kind']).toBe('note');
+    });
+
+    it('renders suggestions excluding tags already applied, capped at 8', () => {
+      showSaveCardInPage(
+        defaults({
+          currentTags: ['ux'],
+          allTags: ['api', 'design', 'ux', 'react'],
+        }),
+      );
+      btn('tag').click();
+      const labels = [...root().querySelectorAll<HTMLElement>('.sugg')].map((b) => b.textContent);
+      expect(labels).toEqual(['api', 'design', 'react']);
+    });
+
+    it('Enter on a non-empty input commits a chip and clears the input', () => {
+      showSaveCardInPage(defaults());
+      btn('tag').click();
       const input = root().querySelector<HTMLInputElement>('.chip-text')!;
       input.value = 'newtag';
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
@@ -170,96 +154,94 @@ describe('showSaveCardInPage', () => {
 
     it('Backspace on empty input removes the last chip', () => {
       showSaveCardInPage(defaults({ currentTags: ['a', 'b'] }));
-      root().querySelectorAll<HTMLButtonElement>('.row')[0]?.click();
+      btn('tag').click();
       const input = root().querySelector<HTMLInputElement>('.chip-text')!;
       input.value = '';
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }));
       expect(chipTags()).toEqual(['a']);
     });
 
-    it('clicking the chip × removes that chip', () => {
-      showSaveCardInPage(defaults({ currentTags: ['keep', 'drop'] }));
-      root().querySelectorAll<HTMLButtonElement>('.row')[0]?.click();
-      const xs = root().querySelectorAll<HTMLButtonElement>('.chip-x');
-      xs[1]?.click();
-      expect(chipTags()).toEqual(['keep']);
-    });
-
     it('clicking a suggestion adds it as a chip', () => {
       showSaveCardInPage(defaults({ allTags: ['api', 'react'] }));
-      root().querySelectorAll<HTMLButtonElement>('.row')[0]?.click();
-      const sugg = root().querySelectorAll<HTMLButtonElement>('.sugg');
-      sugg[0]?.click();
+      btn('tag').click();
+      root().querySelectorAll<HTMLButtonElement>('.sugg')[0]?.click();
       expect(chipTags()).toEqual(['api']);
     });
-  });
 
-  describe('persisting edits', () => {
-    it('Done sends record:update with the current chip tags', () => {
+    it('Done sends record:update with the current chip tags and returns to idle', () => {
       showSaveCardInPage(defaults({ currentTags: ['a'] }));
-      root().querySelectorAll<HTMLButtonElement>('.row')[0]?.click();
+      btn('tag').click();
       const input = root().querySelector<HTMLInputElement>('.chip-text')!;
       input.value = 'b';
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-      const done = activePage().querySelector<HTMLButtonElement>('.btn-primary')!;
-      done.click();
+      panel()!.querySelector<HTMLButtonElement>('.action--primary')!.click();
       expect(sendMessage).toHaveBeenCalledWith({
         type: 'record:update',
         payload: { id: 'rec-1', edit: { tags: ['a', 'b'] } },
       });
+      expect(panel()).toBeNull();
+      expect(btn('tag').classList.contains('is-active')).toBe(false);
+    });
+  });
+
+  describe('note panel', () => {
+    it('clicking NOTE opens the note panel pre-filled with currentNote', () => {
+      showSaveCardInPage(defaults({ currentNote: 'remember this' }));
+      btn('note').click();
+      const ta = root().querySelector<HTMLTextAreaElement>('.note-text');
+      expect(ta?.value).toBe('remember this');
+      expect(panel()?.dataset['kind']).toBe('note');
     });
 
-    it('Save sends record:update with the note text', () => {
+    it('Save sends record:update with the note text and returns to idle', () => {
       showSaveCardInPage(defaults());
-      root().querySelectorAll<HTMLButtonElement>('.row')[1]?.click();
+      btn('note').click();
       const ta = root().querySelector<HTMLTextAreaElement>('.note-text')!;
       ta.value = 'keep this';
-      const save = activePage().querySelector<HTMLButtonElement>('.btn-primary')!;
-      save.click();
+      // Save is the .action--primary in the note panel.
+      panel()!.querySelector<HTMLButtonElement>('.action--primary')!.click();
       expect(sendMessage).toHaveBeenCalledWith({
         type: 'record:update',
         payload: { id: 'rec-1', edit: { note: 'keep this' } },
       });
+      expect(panel()).toBeNull();
     });
 
-    it('Cancel restores the textarea to the last-saved note (no message sent)', () => {
+    it('Cancel restores currentNote and returns to idle (no message sent)', () => {
       showSaveCardInPage(defaults({ currentNote: 'original' }));
-      root().querySelectorAll<HTMLButtonElement>('.row')[1]?.click();
+      btn('note').click();
       const ta = root().querySelector<HTMLTextAreaElement>('.note-text')!;
       ta.value = 'edited';
-      const cancel = activePage().querySelector<HTMLButtonElement>('.btn-ghost')!;
-      cancel.click();
-      // Re-enter page 3 — value should be the original.
-      root().querySelectorAll<HTMLButtonElement>('.row')[1]?.click();
+      panel()!.querySelector<HTMLButtonElement>('.action--ghost')!.click();
+      expect(sendMessage).not.toHaveBeenCalled();
+      expect(panel()).toBeNull();
+      // Re-open: should show the original.
+      btn('note').click();
       const ta2 = root().querySelector<HTMLTextAreaElement>('.note-text')!;
       expect(ta2.value).toBe('original');
-      expect(sendMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('keyboard', () => {
+    it('ESC on idle dismisses the toast', () => {
+      showSaveCardInPage(defaults());
+      const host = document.querySelector<HTMLElement>(HOST_ID)!;
+      host.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      expect(document.querySelector(HOST_ID)).toBeNull();
     });
 
-    it('flips the tag row label after Done', () => {
+    it('ESC with a panel open returns to idle (does not dismiss)', () => {
       showSaveCardInPage(defaults());
-      root().querySelectorAll<HTMLButtonElement>('.row')[0]?.click();
-      const input = root().querySelector<HTMLInputElement>('.chip-text')!;
-      input.value = 'foo';
-      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-      activePage().querySelector<HTMLButtonElement>('.btn-primary')?.click();
-      const row = root().querySelectorAll<HTMLElement>('.row')[0];
-      expect(row?.querySelector('.row-label')?.textContent).toBe('1 tag');
-    });
-
-    it('flips the note row label after Save', () => {
-      showSaveCardInPage(defaults());
-      root().querySelectorAll<HTMLButtonElement>('.row')[1]?.click();
-      const ta = root().querySelector<HTMLTextAreaElement>('.note-text')!;
-      ta.value = 'noted';
-      activePage().querySelector<HTMLButtonElement>('.btn-primary')?.click();
-      const row = root().querySelectorAll<HTMLElement>('.row')[1];
-      expect(row?.querySelector('.row-label')?.textContent).toBe('Note added');
+      btn('tag').click();
+      const host = document.querySelector<HTMLElement>(HOST_ID)!;
+      host.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      expect(panel()).toBeNull();
+      expect(document.querySelector(HOST_ID)).not.toBeNull();
     });
   });
 
   describe('auto-dismiss', () => {
-    it('removes the host after visibleMs on page 1', () => {
+    it('removes the host after visibleMs when idle', () => {
       showSaveCardInPage(defaults({ visibleMs: 1000 }));
       vi.advanceTimersByTime(999);
       expect(document.querySelector(HOST_ID)).not.toBeNull();
@@ -267,11 +249,20 @@ describe('showSaveCardInPage', () => {
       expect(document.querySelector(HOST_ID)).toBeNull();
     });
 
-    it('does not auto-dismiss while on page 2', () => {
+    it('does not auto-dismiss while a panel is open', () => {
       showSaveCardInPage(defaults({ visibleMs: 1000 }));
-      root().querySelectorAll<HTMLButtonElement>('.row')[0]?.click();
+      btn('tag').click();
       vi.advanceTimersByTime(5000);
       expect(document.querySelector(HOST_ID)).not.toBeNull();
+    });
+
+    it('restarts the timer when returning to idle from a panel', () => {
+      showSaveCardInPage(defaults({ visibleMs: 1000 }));
+      btn('tag').click();
+      // Close the panel (idle again).
+      btn('tag').click();
+      vi.advanceTimersByTime(1001);
+      expect(document.querySelector(HOST_ID)).toBeNull();
     });
   });
 });

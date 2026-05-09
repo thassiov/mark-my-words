@@ -1,5 +1,6 @@
 import { render } from 'preact';
 import type { ComponentChildren } from 'preact';
+import { createPortal } from 'preact/compat';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 
 import { errorMessage } from '../lib/error.js';
@@ -43,19 +44,159 @@ function ArchivedPill() {
 }
 
 /**
- * Small uppercase pill identifying the kind of record on a list card.
- * Selections and pages share the same library; the badge keeps the user
- * oriented when scanning a mixed list.
+ * Small uppercase pill identifying a Page record in its card footer.
+ * Selections show a word count in the same slot; pages get this pill
+ * so the footer stays visually balanced across both kinds.
  */
-function TypeBadge({ type }: { type: 'selection' | 'page' }) {
-  const styles =
-    type === 'selection' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700';
+function PageBadge() {
   return (
-    <span
-      className={`mb-2 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${styles}`}
-    >
-      {type}
+    <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+      Page
     </span>
+  );
+}
+
+/**
+ * Top-right corner badge with the relative timestamp of the record,
+ * uppercase and dark-on-warm. Inspired by uiverse's hungry-rattlesnake
+ * date corner, adapted to a horizontal pill since "3 DAYS AGO" needs
+ * the room.
+ */
+function DateBadge({ iso }: { iso: string }) {
+  return (
+    <span className="inline-flex flex-shrink-0 items-center rounded-full bg-stone-900 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-50">
+      {formatRelative(iso)}
+    </span>
+  );
+}
+
+/**
+ * Site favicon for the card top-left, fetched via Google's s2 service.
+ * On error (CSP-restricted page, no favicon, network down) the img
+ * disappears and we render a neutral circle in its place.
+ */
+function Favicon({ sourceUrl }: { sourceUrl: string }) {
+  const [errored, setErrored] = useState(false);
+  if (errored) {
+    return (
+      <span className="inline-block h-6 w-6 flex-shrink-0 rounded-full border border-stone-300 bg-stone-100" />
+    );
+  }
+  const host = hostnameOf(sourceUrl);
+  const src = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`;
+  return (
+    <img
+      src={src}
+      alt=""
+      width={24}
+      height={24}
+      className="h-6 w-6 flex-shrink-0 rounded-full bg-white object-contain p-0.5 shadow-sm ring-1 ring-stone-200"
+      onError={() => {
+        setErrored(true);
+      }}
+    />
+  );
+}
+
+/**
+ * Split a string into (first ~N chars, rest), preferring a word
+ * boundary near the cap. Used to render selectedText as
+ * "title (big, bold)" + "excerpt continuation (small, muted)" on cards.
+ */
+function splitForCard(text: string, firstCap: number): { first: string; rest: string } {
+  if (text.length <= firstCap) return { first: text, rest: '' };
+  // Prefer a space near firstCap. If no space within the last 12 chars
+  // of the cap, just hard-cut.
+  const boundary = text.lastIndexOf(' ', firstCap);
+  const cut = boundary < firstCap - 12 ? firstCap : boundary;
+  return { first: text.slice(0, cut), rest: text.slice(cut + 1) };
+}
+
+function wordCount(text: string): number {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return 0;
+  return trimmed.split(/\s+/).length;
+}
+
+interface CardProps {
+  record: Record;
+  isSelected: boolean;
+  archived: boolean;
+  activeTag: string | null;
+  onClick: () => void;
+  onTagClick: (t: string) => void;
+}
+
+/**
+ * Library list card. Inspired by uiverse's chilly-bird-79 (overall
+ * rhythm: top row → title → continuation → meta) and
+ * hungry-rattlesnake-3 (date corner badge). Type is conveyed by a
+ * 3px left-edge stripe — blue for selection, emerald for page —
+ * instead of a separate badge in the body.
+ */
+function Card({ record, isSelected, archived, activeTag, onClick, onTagClick }: CardProps) {
+  const dateIso =
+    archived && record.archivedAt !== undefined ? record.archivedAt : record.createdAt;
+  const stripe = record.type === 'selection' ? 'bg-blue-400' : 'bg-emerald-400';
+  const surface = isSelected
+    ? 'bg-amber-100 shadow-md'
+    : 'bg-amber-50/70 hover:-translate-y-0.5 hover:bg-amber-100/60 hover:shadow-md';
+
+  const title =
+    record.type === 'selection'
+      ? splitForCard(record.selectedText, 60).first
+      : record.pageTitle || hostnameOf(record.sourceUrl);
+  const excerpt = record.type === 'selection' ? splitForCard(record.selectedText, 60).rest : '';
+
+  return (
+    <article
+      onClick={onClick}
+      className={`relative flex cursor-pointer flex-col overflow-hidden rounded-2xl py-5 pl-6 pr-5 transition-all duration-150 ${surface}`}
+    >
+      <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-[3px] ${stripe}`} />
+
+      <header className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Favicon sourceUrl={record.sourceUrl} />
+          <span className="truncate text-xs font-medium text-stone-600" title={record.sourceUrl}>
+            {hostnameOf(record.sourceUrl)}
+          </span>
+        </div>
+        <DateBadge iso={dateIso} />
+      </header>
+
+      <h3 className="mt-5 line-clamp-2 text-[19px] font-extrabold leading-tight text-stone-900">
+        {record.type === 'selection' ? `“${title}”` : title}
+      </h3>
+
+      {excerpt.length > 0 ? (
+        <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-stone-700">{excerpt}</p>
+      ) : null}
+
+      {(record.tags ?? []).length > 0 ? (
+        <div className="mt-4 flex flex-wrap items-center gap-1">
+          {(record.tags ?? []).map((t) => (
+            <TagChip
+              key={t}
+              tag={t}
+              active={t === activeTag}
+              onClick={() => {
+                onTagClick(t);
+              }}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      <footer className="mt-auto flex items-center gap-2 pt-5 text-xs font-medium text-stone-600">
+        {record.type === 'selection' ? (
+          <span>{wordCount(record.selectedText)} words</span>
+        ) : (
+          <PageBadge />
+        )}
+        {archived ? <ArchivedPill /> : null}
+      </footer>
+    </article>
   );
 }
 
@@ -562,6 +703,84 @@ interface LibrarySectionProps {
   archived: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Sheet (slide-in side panel)
+// ---------------------------------------------------------------------------
+
+interface SheetProps {
+  open: boolean;
+  onClose: () => void;
+  children: ComponentChildren;
+}
+
+/**
+ * Right-anchored slide-in side panel. Hand-rolled (instead of pulling
+ * Radix Dialog) since we only need ESC/backdrop dismiss and a portal.
+ *
+ * Mounted via createPortal to document.body so the panel and its
+ * backdrop sit above the rest of the options page layout regardless of
+ * where the parent component tree is.
+ */
+function Sheet({ open, onClose, children }: SheetProps) {
+  // Mount lifecycle: render only after a small async tick once `open`
+  // flips, so the slide-in transition runs from off-screen-right.
+  const [mounted, setMounted] = useState(false);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      // Next frame: flip `visible` so the transition runs.
+      const id = requestAnimationFrame(() => {
+        setVisible(true);
+      });
+      return () => {
+        cancelAnimationFrame(id);
+      };
+    }
+    setVisible(false);
+    // Keep mounted long enough for the slide-out transition to finish.
+    const id = setTimeout(() => {
+      setMounted(false);
+    }, 220);
+    return () => {
+      clearTimeout(id);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, onClose]);
+
+  if (!mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-50">
+      <div
+        onClick={onClose}
+        className={`absolute inset-0 bg-black/40 transition-opacity duration-200 ${
+          visible ? 'opacity-100' : 'opacity-0'
+        }`}
+      />
+      <aside
+        className={`absolute inset-y-0 right-0 w-full max-w-[520px] transform bg-white shadow-2xl transition-transform duration-200 ease-out ${
+          visible ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        {children}
+      </aside>
+    </div>,
+    document.body,
+  );
+}
+
 function compareForView(a: Record, b: Record, archived: boolean): number {
   if (archived) {
     const aa = a.archivedAt ?? '';
@@ -785,104 +1004,47 @@ function LibrarySection({ archived }: LibrarySectionProps) {
         <p className="text-sm text-gray-500">No matches for &quot;{query}&quot;.</p>
       ) : null}
 
-      <div
-        className="grid items-start gap-4 transition-[grid-template-columns] duration-300 ease-out"
-        style={{
-          gridTemplateColumns: detailOpen
-            ? 'minmax(0, 5fr) minmax(0, 7fr)'
-            : 'minmax(0, 1fr) minmax(0, 0fr)',
-        }}
-      >
-        <ul className="space-y-2">
-          {filtered.map((s) => {
-            const isSelected = s.id === selectedId;
-            return (
-              <li
-                key={s.id}
-                onClick={() => {
-                  setSelectedId(isSelected ? null : s.id);
-                }}
-                className={`cursor-pointer rounded-lg border bg-white p-4 transition-colors ${
-                  isSelected
-                    ? 'border-blue-400 bg-blue-50/40'
-                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                <TypeBadge type={s.type} />
-                {s.type === 'selection' ? (
-                  <p className="line-clamp-3 text-sm leading-relaxed text-gray-900">
-                    {s.selectedText}
-                  </p>
-                ) : (
-                  <p className="line-clamp-2 text-sm font-medium leading-relaxed text-gray-900">
-                    {s.pageTitle || hostnameOf(s.sourceUrl)}
-                  </p>
-                )}
-                {(s.tags ?? []).length > 0 ? (
-                  <div className="mt-2 flex flex-wrap items-center gap-1">
-                    {(s.tags ?? []).map((t) => (
-                      <TagChip
-                        key={t}
-                        tag={t}
-                        active={t === activeTag}
-                        onClick={() => {
-                          setActiveTag(t === activeTag ? null : t);
-                        }}
-                      />
-                    ))}
-                  </div>
-                ) : null}
-                <div className="mt-3 flex items-center justify-between gap-3 text-xs text-gray-500">
-                  <a
-                    href={s.sourceUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                    }}
-                    className="min-w-0 flex-shrink truncate text-blue-600 hover:underline"
-                    title={s.sourceUrl}
-                  >
-                    <span className="font-medium">{hostnameOf(s.sourceUrl)}</span>
-                    {s.pageTitle ? (
-                      <span className="ml-1 text-gray-500">· {s.pageTitle}</span>
-                    ) : null}
-                  </a>
-                  <div className="flex flex-shrink-0 items-center gap-2 whitespace-nowrap">
-                    {archived ? <ArchivedPill /> : null}
-                    <span>
-                      {formatRelative(
-                        archived && s.archivedAt !== undefined ? s.archivedAt : s.createdAt,
-                      )}
-                    </span>
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-
-        <div
-          className={`sticky top-4 overflow-hidden transition-opacity duration-300 ${
-            detailOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
-          }`}
-          style={{ height: 'calc(100vh - 4rem)' }}
-        >
-          {selected === null ? null : (
-            <RecordDetail
-              record={selected}
-              onClose={() => {
-                setSelectedId(null);
+      <div className="grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {filtered.map((s) => {
+          const isSelected = s.id === selectedId;
+          return (
+            <Card
+              key={s.id}
+              record={s}
+              isSelected={isSelected}
+              archived={archived}
+              activeTag={activeTag}
+              onClick={() => {
+                setSelectedId(isSelected ? null : s.id);
               }}
-              onDeleted={handleDeleted}
-              onUpdated={handleUpdated}
               onTagClick={(t) => {
-                setActiveTag((cur) => (cur === t ? null : t));
+                setActiveTag(t === activeTag ? null : t);
               }}
             />
-          )}
-        </div>
+          );
+        })}
       </div>
+
+      <Sheet
+        open={detailOpen}
+        onClose={() => {
+          setSelectedId(null);
+        }}
+      >
+        {selected === null ? null : (
+          <RecordDetail
+            record={selected}
+            onClose={() => {
+              setSelectedId(null);
+            }}
+            onDeleted={handleDeleted}
+            onUpdated={handleUpdated}
+            onTagClick={(t) => {
+              setActiveTag((cur) => (cur === t ? null : t));
+            }}
+          />
+        )}
+      </Sheet>
     </div>
   );
 }
