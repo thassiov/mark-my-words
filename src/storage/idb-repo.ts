@@ -1,7 +1,8 @@
 import Dexie from 'dexie';
 import type { Table } from 'dexie';
 
-import type { Record } from '../shared/types.js';
+import { newId } from '../lib/ulid.js';
+import type { Note, Record } from '../shared/types.js';
 
 import type { Repository } from './repository.js';
 
@@ -53,12 +54,12 @@ export class IdbRepo implements Repository<Record> {
 
   async getAll(): Promise<Record[]> {
     const all = await this.table.toArray();
-    return all.map((r) => withDefaultType(r));
+    return all.map((r) => migrate(r));
   }
 
   async getById(id: string): Promise<Record | null> {
     const found = await this.table.get(id);
-    return found === undefined ? null : withDefaultType(found);
+    return found === undefined ? null : migrate(found);
   }
 
   async put(item: Record): Promise<void> {
@@ -75,6 +76,15 @@ export class IdbRepo implements Repository<Record> {
 }
 
 /**
+ * Apply read-side migrations in order. New migrations append here.
+ * Each step returns either the same reference (no change) or a new
+ * object with the desired shape. Compose without coupling.
+ */
+function migrate(rec: Record): Record {
+  return withMigratedNotes(withDefaultType(rec));
+}
+
+/**
  * Pre-discriminator records were always selections. Default the missing
  * `type` so consumers can rely on the union narrowing. Typed via
  * `unknown` because, at the IDB boundary, we genuinely don't know if
@@ -86,4 +96,32 @@ function withDefaultType(rec: Record): Record {
     return { ...rec, type: 'selection' } as Record;
   }
   return rec;
+}
+
+/**
+ * Migrate the legacy single-`note` field into the new `notes` array.
+ *
+ * Records persisted before the comment-thread refactor have a single
+ * `note: string` field (or no note at all). The new schema has
+ * `notes: Note[]` with newest-first ordering.
+ *
+ * Synthesize a single-element array from the legacy text, then strip
+ * the legacy field so subsequent writes never persist it again. The
+ * synthesized note's createdAt/updatedAt borrow the record's own
+ * audit timestamps (we don't know when the legacy note was actually
+ * written).
+ */
+function withMigratedNotes(rec: Record): Record {
+  const raw = rec as unknown as { note?: unknown; notes?: unknown };
+  if (raw.notes !== undefined) return rec;
+  if (typeof raw.note !== 'string' || raw.note.length === 0) return rec;
+  const synthesized: Note = {
+    id: newId(),
+    text: raw.note,
+    createdAt: rec.createdAt,
+    updatedAt: rec.updatedAt,
+  };
+  const next = { ...rec, notes: [synthesized] } as Record & { note?: string };
+  delete next.note;
+  return next;
 }

@@ -8,7 +8,6 @@ function defaults(overrides: Partial<SaveCardArgs> = {}): SaveCardArgs {
   return {
     recordId: 'rec-1',
     currentTags: [],
-    currentNote: '',
     allTags: [],
     visibleMs: 5000,
     ...overrides,
@@ -185,40 +184,47 @@ describe('showSaveCardInPage', () => {
   });
 
   describe('note panel', () => {
-    it('clicking NOTE opens the note panel pre-filled with currentNote', () => {
-      showSaveCardInPage(defaults({ currentNote: 'remember this' }));
+    it('clicking NOTE opens an empty note panel (always adds, never edits)', () => {
+      showSaveCardInPage(defaults());
       btn('note').click();
       const ta = root().querySelector<HTMLTextAreaElement>('.note-text');
-      expect(ta?.value).toBe('remember this');
+      expect(ta?.value).toBe('');
       expect(panel()?.dataset['kind']).toBe('note');
     });
 
-    it('Save sends record:update with the note text and returns to idle', () => {
+    it('Save sends record:add-note with the trimmed text and returns to idle', () => {
       showSaveCardInPage(defaults());
       btn('note').click();
       const ta = root().querySelector<HTMLTextAreaElement>('.note-text')!;
-      ta.value = 'keep this';
-      // Save is the .action--primary in the note panel.
+      ta.value = '  keep this  ';
       panel()!.querySelector<HTMLButtonElement>('.action--primary')!.click();
       expect(sendMessage).toHaveBeenCalledWith({
-        type: 'record:update',
-        payload: { id: 'rec-1', edit: { note: 'keep this' } },
+        type: 'record:add-note',
+        payload: { id: 'rec-1', text: 'keep this' },
       });
       expect(panel()).toBeNull();
     });
 
-    it('Cancel restores currentNote and returns to idle (no message sent)', () => {
-      showSaveCardInPage(defaults({ currentNote: 'original' }));
+    it('Save with empty text sends nothing and just closes the panel', () => {
+      showSaveCardInPage(defaults());
+      btn('note').click();
+      panel()!.querySelector<HTMLButtonElement>('.action--primary')!.click();
+      expect(sendMessage).not.toHaveBeenCalled();
+      expect(panel()).toBeNull();
+    });
+
+    it('Cancel discards the draft and returns to idle (no message sent)', () => {
+      showSaveCardInPage(defaults());
       btn('note').click();
       const ta = root().querySelector<HTMLTextAreaElement>('.note-text')!;
-      ta.value = 'edited';
+      ta.value = 'drafted';
       panel()!.querySelector<HTMLButtonElement>('.action--ghost')!.click();
       expect(sendMessage).not.toHaveBeenCalled();
       expect(panel()).toBeNull();
-      // Re-open: should show the original.
+      // Re-opening shows a fresh empty textarea — no leftover draft.
       btn('note').click();
       const ta2 = root().querySelector<HTMLTextAreaElement>('.note-text')!;
-      expect(ta2.value).toBe('original');
+      expect(ta2.value).toBe('');
     });
   });
 

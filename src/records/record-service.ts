@@ -1,6 +1,7 @@
 import { nowIso } from '../lib/time.js';
 import { newId } from '../lib/ulid.js';
 import type {
+  Note,
   Page,
   PageInput,
   Record,
@@ -130,14 +131,6 @@ export class RecordService {
     const existing = await this.repo.getById(id);
     if (existing === null) throw new Error(`Record ${id} not found`);
     const updated: Record = { ...existing, updatedAt: nowIso() };
-    // `note` in edit distinguishes explicit `note: undefined` (clear) from key absent (no-op).
-    if ('note' in edit) {
-      if (edit.note === undefined) {
-        delete updated.note;
-      } else {
-        updated.note = edit.note;
-      }
-    }
     if ('tags' in edit) {
       if (edit.tags === undefined) {
         delete updated.tags;
@@ -150,6 +143,67 @@ export class RecordService {
         }
       }
     }
+    await this.repo.put(updated);
+    return updated;
+  }
+
+  /**
+   * Append a new note to the record. Newest-first: the new note goes
+   * at index 0. Empty/whitespace text is rejected (callers must guard).
+   */
+  async addNote(id: string, text: string): Promise<Record> {
+    const existing = await this.repo.getById(id);
+    if (existing === null) throw new Error(`Record ${id} not found`);
+    const trimmed = text.trim();
+    if (trimmed.length === 0) throw new Error('Note text is empty');
+    const now = nowIso();
+    const note: Note = { id: newId(), text: trimmed, createdAt: now, updatedAt: now };
+    const updated: Record = {
+      ...existing,
+      notes: [note, ...(existing.notes ?? [])],
+      updatedAt: now,
+    };
+    await this.repo.put(updated);
+    return updated;
+  }
+
+  /**
+   * Replace the text of an existing note. Bumps the note's updatedAt
+   * and the record's updatedAt. Throws if the note id isn't found.
+   */
+  async editNote(id: string, noteId: string, text: string): Promise<Record> {
+    const existing = await this.repo.getById(id);
+    if (existing === null) throw new Error(`Record ${id} not found`);
+    const trimmed = text.trim();
+    if (trimmed.length === 0) throw new Error('Note text is empty');
+    const notes = existing.notes ?? [];
+    const idx = notes.findIndex((n) => n.id === noteId);
+    const original = notes[idx];
+    if (idx === -1 || original === undefined) {
+      throw new Error(`Note ${noteId} not found on record ${id}`);
+    }
+    const now = nowIso();
+    const nextNote: Note = { ...original, text: trimmed, updatedAt: now };
+    const nextNotes = [...notes];
+    nextNotes[idx] = nextNote;
+    const updated: Record = { ...existing, notes: nextNotes, updatedAt: now };
+    await this.repo.put(updated);
+    return updated;
+  }
+
+  /**
+   * Remove a note from the record. Throws if the note id isn't found.
+   * Empties the array if it was the last note (we don't drop the
+   * field — keeps round-trip stability if more notes are added).
+   */
+  async deleteNote(id: string, noteId: string): Promise<Record> {
+    const existing = await this.repo.getById(id);
+    if (existing === null) throw new Error(`Record ${id} not found`);
+    const notes = existing.notes ?? [];
+    const idx = notes.findIndex((n) => n.id === noteId);
+    if (idx === -1) throw new Error(`Note ${noteId} not found on record ${id}`);
+    const nextNotes = notes.filter((n) => n.id !== noteId);
+    const updated: Record = { ...existing, notes: nextNotes, updatedAt: nowIso() };
     await this.repo.put(updated);
     return updated;
   }

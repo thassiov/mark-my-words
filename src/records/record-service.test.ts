@@ -84,7 +84,6 @@ describe('RecordService', () => {
       const input: SelectionInput = {
         ...baseInput,
         iframeUrl: 'https://example.com/iframe',
-        note: 'a note',
       };
       const snippet = await service.saveSelection(input);
       expect(snippet.selectedText).toBe(input.selectedText);
@@ -93,7 +92,6 @@ describe('RecordService', () => {
       expect(snippet.sourceUrl).toBe(input.sourceUrl);
       expect(snippet.iframeUrl).toBe(input.iframeUrl);
       expect(snippet.pageTitle).toBe(input.pageTitle);
-      expect(snippet.note).toBe(input.note);
     });
   });
 
@@ -202,29 +200,20 @@ describe('RecordService', () => {
   });
 
   describe('update', () => {
-    it('merges edit fields and bumps updatedAt', async () => {
+    it('bumps updatedAt even with no changes', async () => {
       vi.setSystemTime(new Date('2026-05-04T12:00:00Z'));
       const snippet = await service.saveSelection(baseInput);
 
       vi.setSystemTime(new Date('2026-05-04T13:00:00Z'));
-      const updated = await service.update(snippet.id, { note: 'edited note' });
+      const updated = await service.update(snippet.id, {});
 
-      expect(updated.note).toBe('edited note');
       expect(updated.updatedAt).toBe('2026-05-04T13:00:00.000Z');
       expect(updated.createdAt).toBe(snippet.createdAt);
     });
 
-    it('persists the update to the repo', async () => {
-      const snippet = await service.saveSelection(baseInput);
-      await service.update(snippet.id, { note: 'new note' });
-      const stored = await repo.getById(snippet.id);
-      expect(stored?.note).toBe('new note');
-    });
-
     it('does not touch immutable provenance fields', async () => {
       const snippet = await service.saveSelection(baseInput);
-      const updated = await service.update(snippet.id, { note: 'a note' });
-      // The service returns Record (the union); narrow to read SelectionBody fields.
+      const updated = await service.update(snippet.id, { tags: ['x'] });
       if (updated.type !== 'selection') throw new Error('expected selection');
       expect(updated.selectedText).toBe(snippet.selectedText);
       expect(updated.sourceUrl).toBe(snippet.sourceUrl);
@@ -233,20 +222,8 @@ describe('RecordService', () => {
       expect(updated.pageTitle).toBe(snippet.pageTitle);
     });
 
-    it('can set note on a snippet that had none', async () => {
-      const snippet = await service.saveSelection(baseInput);
-      const updated = await service.update(snippet.id, { note: 'my note' });
-      expect(updated.note).toBe('my note');
-    });
-
-    it('can clear note by passing undefined', async () => {
-      const snippet = await service.saveSelection({ ...baseInput, note: 'existing' });
-      const updated = await service.update(snippet.id, { note: undefined });
-      expect(updated.note).toBeUndefined();
-    });
-
     it('throws when the id does not exist', async () => {
-      await expect(service.update('no-such-id', { note: 'x' })).rejects.toThrow(
+      await expect(service.update('no-such-id', { tags: ['x'] })).rejects.toThrow(
         'Record no-such-id not found',
       );
     });
@@ -410,15 +387,98 @@ describe('RecordService', () => {
 
     it('update without tags key leaves existing tags untouched', async () => {
       const snippet = await service.saveSelection({ ...baseInput, tags: ['kept'] });
-      const updated = await service.update(snippet.id, { note: 'just the note' });
+      const updated = await service.update(snippet.id, {});
       expect(updated.tags).toEqual(['kept']);
-      expect(updated.note).toBe('just the note');
     });
 
     it('update normalizes tag input', async () => {
       const snippet = await service.saveSelection(baseInput);
       const updated = await service.update(snippet.id, { tags: [' React ', 'react', 'DOM'] });
       expect(updated.tags).toEqual(['react', 'dom']);
+    });
+  });
+
+  describe('addNote', () => {
+    it('appends a new note (newest-first) and bumps record.updatedAt', async () => {
+      vi.setSystemTime(new Date('2026-05-04T10:00:00Z'));
+      const snippet = await service.saveSelection(baseInput);
+
+      vi.setSystemTime(new Date('2026-05-04T11:00:00Z'));
+      const after1 = await service.addNote(snippet.id, 'first');
+
+      vi.setSystemTime(new Date('2026-05-04T12:00:00Z'));
+      const after2 = await service.addNote(snippet.id, 'second');
+
+      expect(after1.notes?.map((n) => n.text)).toEqual(['first']);
+      expect(after2.notes?.map((n) => n.text)).toEqual(['second', 'first']);
+      expect(after2.updatedAt).toBe('2026-05-04T12:00:00.000Z');
+    });
+
+    it('trims whitespace and rejects empty', async () => {
+      const snippet = await service.saveSelection(baseInput);
+      const after = await service.addNote(snippet.id, '   hi   ');
+      expect(after.notes?.[0]?.text).toBe('hi');
+      await expect(service.addNote(snippet.id, '   ')).rejects.toThrow(/empty/);
+    });
+
+    it('throws when the record id does not exist', async () => {
+      await expect(service.addNote('no-such-id', 'x')).rejects.toThrow(/Record .* not found/);
+    });
+  });
+
+  describe('editNote', () => {
+    it('replaces the text and bumps updatedAt on both note and record', async () => {
+      vi.setSystemTime(new Date('2026-05-04T10:00:00Z'));
+      const snippet = await service.saveSelection(baseInput);
+      vi.setSystemTime(new Date('2026-05-04T11:00:00Z'));
+      const withNote = await service.addNote(snippet.id, 'original');
+      const noteId = withNote.notes![0]!.id;
+
+      vi.setSystemTime(new Date('2026-05-04T12:00:00Z'));
+      const edited = await service.editNote(snippet.id, noteId, 'edited');
+
+      expect(edited.notes?.[0]?.text).toBe('edited');
+      expect(edited.notes?.[0]?.updatedAt).toBe('2026-05-04T12:00:00.000Z');
+      expect(edited.notes?.[0]?.createdAt).toBe('2026-05-04T11:00:00.000Z');
+      expect(edited.updatedAt).toBe('2026-05-04T12:00:00.000Z');
+    });
+
+    it('throws when the note id does not exist on the record', async () => {
+      const snippet = await service.saveSelection(baseInput);
+      await service.addNote(snippet.id, 'a');
+      await expect(service.editNote(snippet.id, 'no-such-note', 'x')).rejects.toThrow(
+        /Note .* not found/,
+      );
+    });
+
+    it('rejects empty/whitespace text', async () => {
+      const snippet = await service.saveSelection(baseInput);
+      const withNote = await service.addNote(snippet.id, 'a');
+      const noteId = withNote.notes![0]!.id;
+      await expect(service.editNote(snippet.id, noteId, '   ')).rejects.toThrow(/empty/);
+    });
+  });
+
+  describe('deleteNote', () => {
+    it('removes the matching note and leaves siblings intact', async () => {
+      const snippet = await service.saveSelection(baseInput);
+      vi.setSystemTime(new Date('2026-05-04T10:00:00Z'));
+      const after1 = await service.addNote(snippet.id, 'a');
+      vi.setSystemTime(new Date('2026-05-04T11:00:00Z'));
+      const after2 = await service.addNote(snippet.id, 'b');
+      const aId = after1.notes![0]!.id;
+
+      const result = await service.deleteNote(snippet.id, aId);
+      expect(result.notes?.map((n) => n.text)).toEqual(['b']);
+      // The 'b' note retains its original timestamp.
+      expect(result.notes?.[0]?.id).toBe(after2.notes![0]!.id);
+    });
+
+    it('throws when the note id does not exist', async () => {
+      const snippet = await service.saveSelection(baseInput);
+      await expect(service.deleteNote(snippet.id, 'no-such-note')).rejects.toThrow(
+        /Note .* not found/,
+      );
     });
   });
 });

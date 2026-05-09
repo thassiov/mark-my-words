@@ -271,7 +271,6 @@ async function presentSavedCard(tabId: number, saved: Record): Promise<void> {
   await showCard(tabId, {
     recordId: saved.id,
     currentTags: saved.tags ?? [],
-    currentNote: saved.note ?? '',
     allTags,
     visibleMs: TOAST_VISIBLE_MS,
   });
@@ -377,7 +376,10 @@ function broadcastRecordEvent(msg: Message, value: unknown): void {
     }
     case 'record:update':
     case 'record:archive':
-    case 'record:unarchive': {
+    case 'record:unarchive':
+    case 'record:add-note':
+    case 'record:edit-note':
+    case 'record:delete-note': {
       event = { type: 'record:updated', record: value as Record };
 
       break;

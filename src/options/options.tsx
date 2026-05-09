@@ -1,14 +1,14 @@
 import { render } from 'preact';
 import type { ComponentChildren } from 'preact';
 import { createPortal } from 'preact/compat';
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import { errorMessage } from '../lib/error.js';
 import { formatRelative } from '../lib/time.js';
 import { hostnameOf } from '../lib/url.js';
 import { isRecordEvent } from '../shared/messages.js';
 import { send } from '../shared/send.js';
-import type { Record } from '../shared/types.js';
+import type { Note, Record } from '../shared/types.js';
 
 type Section = 'library' | 'archived' | 'settings';
 
@@ -394,56 +394,19 @@ interface DetailProps {
 }
 
 function RecordDetail({ record, onDeleted, onUpdated, onTagClick }: DetailProps) {
-  const [editing, setEditing] = useState(false);
-  const [editNote, setEditNote] = useState(record.note ?? '');
-  const [editTags, setEditTags] = useState<string[]>(record.tags ?? []);
-  const [tagDraft, setTagDraft] = useState('');
-  const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const noteRef = useRef<HTMLTextAreaElement>(null);
 
   const archivedAt = record.archivedAt;
   const isArchived = archivedAt !== undefined;
   const tags = record.tags ?? [];
 
-  useEffect(() => {
-    setEditing(false);
-    setEditNote(record.note ?? '');
-    setEditTags(record.tags ?? []);
-    setTagDraft('');
-  }, [record.id]);
-
-  function addTagFromDraft() {
-    const t = normalizeTag(tagDraft);
-    if (t.length === 0) return;
-    if (editTags.includes(t)) {
-      setTagDraft('');
-      return;
-    }
-    setEditTags([...editTags, t]);
-    setTagDraft('');
-  }
-
-  async function handleSave() {
-    setSaving(true);
-    try {
-      // Cast: send()'s conditional return type doesn't narrow through
-      // the generic, so we assert the concrete shape here.
-      const updated = await send({
-        type: 'record:update',
-        payload: {
-          id: record.id,
-          edit: {
-            note: editNote.trim() || undefined,
-            tags: editTags,
-          },
-        },
-      });
-      onUpdated(updated);
-      setEditing(false);
-    } finally {
-      setSaving(false);
-    }
+  function focusNoteEditor() {
+    const el = noteRef.current;
+    if (el === null) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.focus();
   }
 
   async function handleDelete() {
@@ -544,17 +507,13 @@ function RecordDetail({ record, onDeleted, onUpdated, onTagClick }: DetailProps)
 
         {/* Action buttons — toast-style: uppercase, distinct accents. */}
         <div className="flex items-center gap-2 pt-2">
-          {editing ? null : (
-            <button
-              type="button"
-              onClick={() => {
-                setEditing(true);
-              }}
-              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-blue-700 transition-colors hover:bg-blue-700 hover:text-white"
-            >
-              Edit
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={focusNoteEditor}
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-blue-700 transition-colors hover:bg-blue-700 hover:text-white"
+          >
+            Edit
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -578,143 +537,38 @@ function RecordDetail({ record, onDeleted, onUpdated, onTagClick }: DetailProps)
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
+      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto bg-stone-50 px-6 py-6">
+        {/* Selection — boxed, larger, serif. The "money quote" of the panel. */}
         {record.type === 'selection' ? (
-          <section>
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-              Selection
-            </h2>
-            <blockquote className="border-l-4 border-blue-200 bg-blue-50/50 px-3 py-2 text-sm leading-relaxed text-gray-900">
-              {record.selectedText}
-            </blockquote>
-          </section>
+          <blockquote className="rounded-xl bg-white px-6 py-5 font-serif text-[19px] leading-relaxed text-stone-900 shadow-sm ring-1 ring-stone-200/70">
+            “{record.selectedText}”
+          </blockquote>
         ) : null}
 
-        {editing ? (
-          <>
-            <section>
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Note
-              </h2>
-              <textarea
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm leading-relaxed focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                rows={3}
-                placeholder="Add a personal note…"
-                value={editNote}
-                onInput={(e) => {
-                  setEditNote((e.target as HTMLTextAreaElement).value);
-                }}
-              />
-            </section>
-            <section>
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Tags
-              </h2>
-              {editTags.length > 0 ? (
-                <div className="mb-2 flex flex-wrap gap-1.5">
-                  {editTags.map((t) => (
-                    <TagChip
-                      key={t}
-                      tag={t}
-                      onRemove={() => {
-                        setEditTags(editTags.filter((x) => x !== t));
-                      }}
-                    />
-                  ))}
-                </div>
-              ) : null}
-              <input
-                type="text"
-                list={TAG_SUGGESTIONS_ID}
-                value={tagDraft}
-                onInput={(e) => {
-                  setTagDraft((e.target as HTMLInputElement).value);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ',') {
-                    e.preventDefault();
-                    addTagFromDraft();
-                  } else if (e.key === 'Backspace' && tagDraft === '' && editTags.length > 0) {
-                    e.preventDefault();
-                    setEditTags(editTags.slice(0, -1));
-                  }
-                }}
-                onBlur={addTagFromDraft}
-                placeholder="Add a tag and press Enter…"
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-              />
-            </section>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  void handleSave();
-                }}
-                disabled={saving}
-                className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-              >
-                {saving ? 'Saving…' : 'Save'}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setEditing(false);
-                  setEditNote(record.note ?? '');
-                  setEditTags(record.tags ?? []);
-                  setTagDraft('');
-                }}
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-            </div>
-          </>
-        ) : null}
-
-        {!editing && record.note ? (
-          <section>
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-              Note
-            </h2>
-            <p className="text-sm leading-relaxed text-gray-700">{record.note}</p>
-          </section>
-        ) : null}
-
-        {/* Tags moved to the header; nothing renders here in view mode. */}
-
-        {!editing &&
-        record.type === 'selection' &&
-        (record.contextBefore || record.contextAfter) ? (
-          <section>
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-              In context
-            </h2>
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">
-              <span className="text-gray-400">{record.contextBefore}</span>
-              <mark className="bg-yellow-200 px-0.5 text-gray-900">{record.selectedText}</mark>
-              <span className="text-gray-400">{record.contextAfter}</span>
+        {/* In context — collapsible, default closed. */}
+        {record.type === 'selection' && (record.contextBefore || record.contextAfter) ? (
+          <Collapsible label="In context">
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-stone-700">
+              <span className="text-stone-400">{record.contextBefore}</span>
+              <mark className="bg-yellow-200 px-0.5 text-stone-900">{record.selectedText}</mark>
+              <span className="text-stone-400">{record.contextAfter}</span>
             </p>
-          </section>
+          </Collapsible>
         ) : null}
 
-        {!editing && record.screenshotDataUrl ? (
-          <section>
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-              Screenshot
-            </h2>
+        {/* Screenshot — collapsible, default closed. */}
+        {record.screenshotDataUrl ? (
+          <Collapsible label="Screenshot">
             <img
               src={record.screenshotDataUrl}
               alt="Page at the moment of capture"
-              className="w-full rounded-md border border-gray-200"
+              className="w-full rounded-md border border-stone-200"
             />
-          </section>
+          </Collapsible>
         ) : null}
 
-        {!editing && record.iframeUrl ? (
-          <section>
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-              Iframe source
-            </h2>
+        {record.iframeUrl ? (
+          <Collapsible label="Iframe source">
             <a
               href={record.iframeUrl}
               target="_blank"
@@ -723,10 +577,280 @@ function RecordDetail({ record, onDeleted, onUpdated, onTagClick }: DetailProps)
             >
               {record.iframeUrl}
             </a>
-          </section>
+          </Collapsible>
         ) : null}
+
+        {/* Notes — comment-thread shape. Single-note schema today; future
+            iteration extends to a real comments array. */}
+        <NoteSection record={record} onUpdated={onUpdated} textareaRef={noteRef} />
       </div>
     </aside>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Detail-pane subcomponents
+// ---------------------------------------------------------------------------
+
+interface CollapsibleProps {
+  label: string;
+  children: ComponentChildren;
+}
+
+/**
+ * Native `<details>` with shadcn-flavored chrome. Default closed; the
+ * chevron rotates on open. No JS state — the browser handles it.
+ */
+function Collapsible({ label, children }: CollapsibleProps) {
+  return (
+    <details className="group rounded-lg bg-white px-4 py-3 ring-1 ring-stone-200/70">
+      <summary className="flex cursor-pointer list-none items-center justify-between text-[11px] font-bold uppercase tracking-wider text-stone-600 hover:text-stone-900">
+        <span>{label}</span>
+        <span
+          aria-hidden="true"
+          className="text-stone-400 transition-transform group-open:rotate-90"
+        >
+          ›
+        </span>
+      </summary>
+      <div className="mt-3">{children}</div>
+    </details>
+  );
+}
+
+interface NoteSectionProps {
+  record: Record;
+  onUpdated: (record: Record) => void;
+  textareaRef: { current: HTMLTextAreaElement | null };
+}
+
+/**
+ * Notes pane shaped like a comment thread: a textarea on top for
+ * posting new notes, then a list of past notes (newest-first), each
+ * with inline Edit and Delete affordances.
+ *
+ * - Post sends `record:add-note` with the textarea's text; the new
+ *   note prepends to the list (the service handles ordering).
+ * - Edit toggles inline edit mode for that note: textarea + Save /
+ *   Cancel below it. Save sends `record:edit-note`; Cancel restores
+ *   the read-only display without touching state.
+ * - Delete prompts `confirm()` and sends `record:delete-note` —
+ *   matches the record-level delete behavior.
+ */
+function NoteSection({ record, onUpdated, textareaRef }: NoteSectionProps) {
+  const [draft, setDraft] = useState('');
+  const [posting, setPosting] = useState(false);
+  const notes = record.notes ?? [];
+
+  useEffect(() => {
+    setDraft('');
+  }, [record.id]);
+
+  async function handlePost() {
+    const text = draft.trim();
+    if (text.length === 0) return;
+    setPosting(true);
+    try {
+      const updated = await send({
+        type: 'record:add-note',
+        payload: { id: record.id, text },
+      });
+      onUpdated(updated);
+      setDraft('');
+    } finally {
+      setPosting(false);
+    }
+  }
+
+  return (
+    <section>
+      <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-stone-600">Notes</h3>
+      <div className="rounded-lg bg-white p-4 ring-1 ring-stone-200/70">
+        <textarea
+          ref={textareaRef}
+          value={draft}
+          onInput={(e) => {
+            setDraft((e.target as HTMLTextAreaElement).value);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              void handlePost();
+            }
+          }}
+          placeholder="Write a note…"
+          rows={3}
+          className="w-full resize-none border-0 bg-transparent text-sm leading-relaxed text-stone-900 placeholder-stone-400 focus:outline-none"
+        />
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={() => {
+              void handlePost();
+            }}
+            disabled={posting || draft.trim().length === 0}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-stone-900 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-white transition-colors hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {posting ? 'Posting…' : 'Post'}
+          </button>
+        </div>
+      </div>
+
+      {notes.length > 0 ? (
+        <ul className="mt-4 space-y-3">
+          {notes.map((note) => (
+            <NoteItem key={note.id} record={record} note={note} onUpdated={onUpdated} />
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
+interface NoteItemProps {
+  record: Record;
+  note: Note;
+  onUpdated: (record: Record) => void;
+}
+
+/**
+ * One row in the notes thread. Toggles between read-only display and
+ * an inline edit form. Edit/Delete buttons sit in the item's header,
+ * minimal styling, ghost-on-hover.
+ */
+function NoteItem({ record, note, onUpdated }: NoteItemProps) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(note.text);
+  const [busy, setBusy] = useState(false);
+
+  // If the record's note text changes underneath us (broadcast event),
+  // sync the draft when not actively editing.
+  useEffect(() => {
+    if (!editing) setDraft(note.text);
+  }, [editing, note.text]);
+
+  async function handleSave() {
+    const text = draft.trim();
+    if (text.length === 0 || text === note.text) {
+      setEditing(false);
+      setDraft(note.text);
+      return;
+    }
+    setBusy(true);
+    try {
+      const updated = await send({
+        type: 'record:edit-note',
+        payload: { id: record.id, noteId: note.id, text },
+      });
+      onUpdated(updated);
+      setEditing(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!globalThis.confirm('Delete this note?')) return;
+    setBusy(true);
+    try {
+      const updated = await send({
+        type: 'record:delete-note',
+        payload: { id: record.id, noteId: note.id },
+      });
+      onUpdated(updated);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const edited = note.updatedAt !== note.createdAt;
+
+  return (
+    <li className="rounded-lg bg-white p-4 ring-1 ring-stone-200/70">
+      <header className="flex items-center justify-between gap-2 text-[11px]">
+        <span className="text-stone-500">
+          Posted {formatRelative(note.createdAt)}
+          {edited ? (
+            <span className="ml-1 text-stone-400">(edited {formatRelative(note.updatedAt)})</span>
+          ) : null}
+        </span>
+        <div className="flex items-center gap-1">
+          {editing ? null : (
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(true);
+              }}
+              disabled={busy}
+              className="rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-700 transition-colors hover:bg-blue-700 hover:text-white disabled:opacity-50"
+            >
+              Edit
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              void handleDelete();
+            }}
+            disabled={busy}
+            className="rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-red-700 transition-colors hover:bg-red-700 hover:text-white disabled:opacity-50"
+          >
+            Delete
+          </button>
+        </div>
+      </header>
+
+      {editing ? (
+        <>
+          <textarea
+            value={draft}
+            onInput={(e) => {
+              setDraft((e.target as HTMLTextAreaElement).value);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                void handleSave();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                setDraft(note.text);
+                setEditing(false);
+              }
+            }}
+            rows={3}
+            className="mt-2 w-full resize-none rounded-md border border-stone-300 bg-white px-3 py-2 text-sm leading-relaxed text-stone-900 focus:border-stone-500 focus:outline-none focus:ring-2 focus:ring-stone-500/20"
+            autoFocus
+          />
+          <div className="mt-2 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setDraft(note.text);
+                setEditing(false);
+              }}
+              disabled={busy}
+              className="rounded-md border border-stone-300 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-stone-700 transition-colors hover:bg-stone-100 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void handleSave();
+              }}
+              disabled={busy || draft.trim().length === 0}
+              className="rounded-md bg-stone-900 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white transition-colors hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {busy ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </>
+      ) : (
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-stone-800">
+          {note.text}
+        </p>
+      )}
+    </li>
   );
 }
 
@@ -938,11 +1062,12 @@ function LibrarySection({ archived }: LibrarySectionProps) {
       if (activeTag !== null && !(s.tags ?? []).includes(activeTag)) return false;
       if (q === '') return true;
       const body = s.type === 'selection' ? s.selectedText : '';
+      const notesText = (s.notes ?? []).map((n) => n.text).join(' ');
       return (
         body.toLowerCase().includes(q) ||
         s.pageTitle.toLowerCase().includes(q) ||
         hostnameOf(s.sourceUrl).toLowerCase().includes(q) ||
-        (s.note ?? '').toLowerCase().includes(q) ||
+        notesText.toLowerCase().includes(q) ||
         (s.tags ?? []).some((t) => t.includes(q))
       );
     });

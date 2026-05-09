@@ -7,8 +7,6 @@ export interface SaveCardArgs {
   recordId: string;
   /** Tags currently on the record. Empty on initial save; non-empty when re-opening. */
   currentTags: readonly string[];
-  /** Note currently on the record. Empty on initial save. */
-  currentNote: string;
   /** All tags across the user's library, used to populate the suggestions row. */
   allTags: readonly string[];
   /** Auto-dismiss budget for the idle pill. Cancelled once the user engages. */
@@ -41,7 +39,7 @@ export interface SaveCardArgs {
    helpers and constants must live inside the function body to survive
    executeScript serialization (see top docstring). */
 export function showSaveCardInPage(args: SaveCardArgs): void {
-  const { recordId, currentTags, currentNote, allTags, visibleMs } = args;
+  const { recordId, currentTags, allTags, visibleMs } = args;
   const HOST_ID = 'mmw-save-card-host';
   document.querySelector(`#${HOST_ID}`)?.remove();
 
@@ -451,7 +449,6 @@ export function showSaveCardInPage(args: SaveCardArgs): void {
     ta.className = 'note-text';
     ta.placeholder = 'Worth referencing later…';
     ta.rows = 4;
-    ta.value = currentNote;
     ta.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter' && !ev.shiftKey) {
         ev.preventDefault();
@@ -467,7 +464,7 @@ export function showSaveCardInPage(args: SaveCardArgs): void {
     cancel.type = 'button';
     cancel.textContent = 'Cancel';
     cancel.addEventListener('click', () => {
-      ta.value = currentNote;
+      ta.value = '';
       setActive(null);
     });
     const save = document.createElement('button');
@@ -475,7 +472,7 @@ export function showSaveCardInPage(args: SaveCardArgs): void {
     save.type = 'button';
     save.textContent = 'Save';
     save.addEventListener('click', () => {
-      sendUpdate({ note: ta.value });
+      addNote(ta.value);
       setActive(null);
     });
     footer.append(cancel, save);
@@ -488,8 +485,11 @@ export function showSaveCardInPage(args: SaveCardArgs): void {
    * Fire-and-forget record:update. Optimistic UI — we close the panel
    * before the response, so failures are logged for diagnostics rather
    * than rolled back. Wrapped to suppress unhandled-rejection noise.
+   *
+   * Used for the Tag panel's Done. The Note panel uses {@link addNote}
+   * instead, which goes through the dedicated record:add-note op.
    */
-  function sendUpdate(edit: { tags?: string[]; note?: string }): void {
+  function sendUpdate(edit: { tags?: string[] }): void {
     void chrome.runtime
       .sendMessage({ type: 'record:update', payload: { id: recordId, edit } })
       .then((res: unknown) => {
@@ -499,6 +499,26 @@ export function showSaveCardInPage(args: SaveCardArgs): void {
       })
       .catch((err: unknown) => {
         console.warn('[mark-my-words] save-card update failed:', err);
+      });
+  }
+
+  /**
+   * Fire-and-forget record:add-note. Optimistic UI — empty/whitespace
+   * is silently dropped (matches the panel's Save-disabled state for
+   * the same content). Failures are logged.
+   */
+  function addNote(text: string): void {
+    const trimmed = text.trim();
+    if (trimmed.length === 0) return;
+    void chrome.runtime
+      .sendMessage({ type: 'record:add-note', payload: { id: recordId, text: trimmed } })
+      .then((res: unknown) => {
+        if (typeof res === 'object' && res !== null && (res as { ok?: unknown }).ok === false) {
+          console.warn('[mark-my-words] save-card add-note rejected:', res);
+        }
+      })
+      .catch((err: unknown) => {
+        console.warn('[mark-my-words] save-card add-note failed:', err);
       });
   }
 

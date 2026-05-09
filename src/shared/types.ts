@@ -46,9 +46,33 @@ export interface Capture {
   screenshotDataUrl?: string;
 }
 
+/**
+ * A single user note attached to a record. Records keep an array of
+ * notes (newest-first) which the user can post / edit / delete
+ * independently. The array can be absent (no notes) or present with
+ * 0+ entries.
+ */
+export interface Note {
+  /** ULID — sortable, stable across edits. */
+  id: string;
+  /** The note's text content. Free-form. */
+  text: string;
+  /** ISO 8601 timestamp of when the note was first posted. */
+  createdAt: string;
+  /** ISO 8601 timestamp; bumps on edit, equals createdAt at first post. */
+  updatedAt: string;
+}
+
 export interface UserMeta {
-  /** Free-form user note. */
-  note?: string;
+  /**
+   * Notes attached to the record, newest-first. Absent means "no
+   * notes". Array order is the storage order — UI renders as-is.
+   *
+   * Replaces the legacy single `note: string` field. Records persisted
+   * before this change are migrated on first read in `IdbRepo` (see
+   * `withMigratedNotes`).
+   */
+  notes?: Note[];
   /**
    * User-defined tags for grouping. Stored normalized: trimmed,
    * lowercased, deduped. Empty array and absent field mean the same
@@ -101,14 +125,14 @@ export type SelectionInput = Omit<Selection, 'id' | 'type' | 'createdAt' | 'upda
 export type PageInput = Omit<Page, 'id' | 'type' | 'createdAt' | 'updatedAt'>;
 
 /**
- * Patch shape for editing an existing record. UserMeta-only — Source,
- * Capture, and SelectionBody are immutable.
+ * Patch shape for editing an existing record's tags. Notes have their
+ * own dedicated dispatcher ops (`record:add-note` / `edit-note` /
+ * `delete-note`) — they don't go through this generic update.
  *
- * Both fields are `T | undefined` (not just `T`) so callers can
- * explicitly pass `undefined` to clear the value. This differs from
- * omitting the key entirely (which leaves the field untouched).
+ * `tags` is `T | undefined` (not just `T`) so callers can explicitly
+ * pass `undefined` to clear the value, distinct from omitting the key
+ * (which leaves the field untouched).
  */
 export interface RecordEdit {
-  note?: string | undefined;
   tags?: string[] | undefined;
 }

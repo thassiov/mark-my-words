@@ -59,6 +59,15 @@ export function createDispatcher(deps: DispatcherDeps): Dispatcher {
       case 'record:unarchive': {
         return deps.records.unarchive(msg.payload.id);
       }
+      case 'record:add-note': {
+        return deps.records.addNote(msg.payload.id, msg.payload.text);
+      }
+      case 'record:edit-note': {
+        return deps.records.editNote(msg.payload.id, msg.payload.noteId, msg.payload.text);
+      }
+      case 'record:delete-note': {
+        return deps.records.deleteNote(msg.payload.id, msg.payload.noteId);
+      }
       default: {
         // Exhaustiveness check — fails to compile if a Message variant is missing above.
         const _exhaustive: never = msg;

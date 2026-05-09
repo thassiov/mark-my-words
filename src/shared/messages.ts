@@ -53,7 +53,10 @@ export type Message =
   | { type: 'record:delete'; payload: { id: string } }
   | { type: 'record:update'; payload: { id: string; edit: RecordEdit } }
   | { type: 'record:archive'; payload: { id: string } }
-  | { type: 'record:unarchive'; payload: { id: string } };
+  | { type: 'record:unarchive'; payload: { id: string } }
+  | { type: 'record:add-note'; payload: { id: string; text: string } }
+  | { type: 'record:edit-note'; payload: { id: string; noteId: string; text: string } }
+  | { type: 'record:delete-note'; payload: { id: string; noteId: string } };
 
 /**
  * Maps a message type to its expected response shape.
@@ -68,13 +71,15 @@ export type Response<T extends Message['type']> = T extends 'record:save-selecti
         ? number
         : T extends 'record:delete'
           ? null
-          : T extends 'record:update'
+          : T extends
+                | 'record:update'
+                | 'record:archive'
+                | 'record:unarchive'
+                | 'record:add-note'
+                | 'record:edit-note'
+                | 'record:delete-note'
             ? Record
-            : T extends 'record:archive'
-              ? Record
-              : T extends 'record:unarchive'
-                ? Record
-                : never;
+            : never;
 
 /**
  * Runtime-side guard. Cheap structural check; the real type-safety is
@@ -95,6 +100,9 @@ export function isMessage(v: unknown): v is Message {
     t === 'record:delete' ||
     t === 'record:update' ||
     t === 'record:archive' ||
-    t === 'record:unarchive'
+    t === 'record:unarchive' ||
+    t === 'record:add-note' ||
+    t === 'record:edit-note' ||
+    t === 'record:delete-note'
   );
 }
