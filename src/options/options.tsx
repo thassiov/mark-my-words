@@ -388,13 +388,12 @@ function TagAdder({ record }: TagAdderProps) {
 
 interface DetailProps {
   record: Record;
-  onClose: () => void;
   onDeleted: (id: string) => void;
   onUpdated: (record: Record) => void;
   onTagClick: (tag: string) => void;
 }
 
-function RecordDetail({ record, onClose, onDeleted, onUpdated, onTagClick }: DetailProps) {
+function RecordDetail({ record, onDeleted, onUpdated, onTagClick }: DetailProps) {
   const [editing, setEditing] = useState(false);
   const [editNote, setEditNote] = useState(record.note ?? '');
   const [editTags, setEditTags] = useState<string[]>(record.tags ?? []);
@@ -472,42 +471,86 @@ function RecordDetail({ record, onClose, onDeleted, onUpdated, onTagClick }: Det
   }
 
   return (
-    <aside className="flex h-full min-w-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
-      <header className="flex items-start justify-between gap-3 border-b border-gray-200 px-5 py-4">
-        <div className="min-w-0">
+    <aside className="flex h-full min-w-0 flex-col overflow-hidden bg-white">
+      <header className="space-y-3 border-b border-stone-200 px-6 py-5">
+        {/* Top row: favicon + hostname | page title — mirrors the card. */}
+        <div className="flex min-w-0 items-center gap-2">
+          <Favicon sourceUrl={record.sourceUrl} />
           <a
             href={record.sourceUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="block truncate text-sm font-medium text-blue-600 hover:underline"
-            title={record.sourceUrl}
+            className="min-w-0 flex-1 truncate text-xs text-stone-600 hover:underline"
+            title={
+              record.pageTitle
+                ? `${hostnameOf(record.sourceUrl)} | ${record.pageTitle}`
+                : record.sourceUrl
+            }
           >
-            {hostnameOf(record.sourceUrl)}
-          </a>
-          {record.pageTitle ? (
-            <p className="mt-0.5 truncate text-xs text-gray-500" title={record.pageTitle}>
-              {record.pageTitle}
-            </p>
-          ) : null}
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-400">
-            <span>Saved {formatRelative(record.createdAt)}</span>
-            {archivedAt === undefined ? null : (
+            <span className="font-medium">{hostnameOf(record.sourceUrl)}</span>
+            {record.pageTitle ? (
               <>
-                <span aria-hidden="true">·</span>
-                <span>Archived {formatRelative(archivedAt)}</span>
-                <ArchivedPill />
+                <span className="px-1 text-stone-400">|</span>
+                <span>{record.pageTitle}</span>
               </>
-            )}
-          </div>
+            ) : null}
+          </a>
         </div>
-        <div className="flex flex-shrink-0 items-center gap-1">
+
+        {/* Type + creation/archived dates. */}
+        <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-stone-600">
+          <span>
+            {record.type === 'selection'
+              ? `Selection: ${String(wordCount(record.selectedText))} words`
+              : 'Page'}
+          </span>
+          <span aria-hidden="true" className="text-stone-400">
+            •
+          </span>
+          <span className="text-stone-500">Saved {formatRelative(record.createdAt)}</span>
+          {archivedAt === undefined ? null : (
+            <>
+              <span aria-hidden="true" className="text-stone-400">
+                •
+              </span>
+              <span className="text-stone-500">Archived {formatRelative(archivedAt)}</span>
+              <ArchivedPill />
+            </>
+          )}
+        </div>
+
+        {/* Tags (always shown so the +tag pill is reachable). */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {tags.map((t) => (
+            <TagChip
+              key={t}
+              tag={t}
+              onClick={() => {
+                onTagClick(t);
+              }}
+              onRemove={() => {
+                void send({
+                  type: 'record:update',
+                  payload: {
+                    id: record.id,
+                    edit: { tags: tags.filter((x) => x !== t) },
+                  },
+                });
+              }}
+            />
+          ))}
+          <TagAdder record={record} />
+        </div>
+
+        {/* Action buttons — toast-style: uppercase, distinct accents. */}
+        <div className="flex items-center gap-2 pt-2">
           {editing ? null : (
             <button
               type="button"
               onClick={() => {
                 setEditing(true);
               }}
-              className="rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-blue-700 transition-colors hover:bg-blue-700 hover:text-white"
             >
               Edit
             </button>
@@ -518,7 +561,7 @@ function RecordDetail({ record, onClose, onDeleted, onUpdated, onTagClick }: Det
               void handleArchiveToggle();
             }}
             disabled={archiving}
-            className="rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-stone-700 transition-colors hover:bg-stone-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             {archiveLabel(archiving, isArchived)}
           </button>
@@ -528,17 +571,9 @@ function RecordDetail({ record, onClose, onDeleted, onUpdated, onTagClick }: Det
               void handleDelete();
             }}
             disabled={deleting}
-            className="rounded-md px-2 py-1 text-xs text-red-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-red-700 transition-colors hover:bg-red-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             {deleting ? '…' : 'Delete'}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close detail"
-            className="rounded-md px-2 py-1 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-          >
-            ×
           </button>
         </div>
       </header>
@@ -645,34 +680,7 @@ function RecordDetail({ record, onClose, onDeleted, onUpdated, onTagClick }: Det
           </section>
         ) : null}
 
-        {editing ? null : (
-          <section>
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-              Tags
-            </h2>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {tags.map((t) => (
-                <TagChip
-                  key={t}
-                  tag={t}
-                  onClick={() => {
-                    onTagClick(t);
-                  }}
-                  onRemove={() => {
-                    void send({
-                      type: 'record:update',
-                      payload: {
-                        id: record.id,
-                        edit: { tags: tags.filter((x) => x !== t) },
-                      },
-                    });
-                  }}
-                />
-              ))}
-              <TagAdder record={record} />
-            </div>
-          </section>
-        )}
+        {/* Tags moved to the header; nothing renders here in view mode. */}
 
         {!editing &&
         record.type === 'selection' &&
@@ -802,6 +810,14 @@ function Sheet({ open, onClose, children }: SheetProps) {
           visible ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close panel"
+          className="absolute -left-5 top-6 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-stone-200 bg-white text-xl text-stone-700 shadow-md transition-colors hover:bg-stone-50"
+        >
+          ×
+        </button>
         {children}
       </aside>
     </div>,
@@ -1062,9 +1078,6 @@ function LibrarySection({ archived }: LibrarySectionProps) {
         {selected === null ? null : (
           <RecordDetail
             record={selected}
-            onClose={() => {
-              setSelectedId(null);
-            }}
             onDeleted={handleDeleted}
             onUpdated={handleUpdated}
             onTagClick={(t) => {
