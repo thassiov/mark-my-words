@@ -798,7 +798,7 @@ function Sheet({ open, onClose, children }: SheetProps) {
         }`}
       />
       <aside
-        className={`absolute inset-y-0 right-0 w-full max-w-[520px] transform bg-white shadow-2xl transition-transform duration-200 ease-out ${
+        className={`absolute inset-y-0 right-0 w-full transform bg-white shadow-2xl transition-transform duration-200 ease-out sm:w-[50vw] ${
           visible ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
