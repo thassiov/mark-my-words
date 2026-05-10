@@ -1,37 +1,10 @@
-import Dexie from 'dexie';
 import type { Table } from 'dexie';
 
 import { newId } from '../lib/ulid.js';
 import type { Note, Record } from '../shared/types.js';
 
+import { getDatabase } from './database.js';
 import type { Repository } from './repository.js';
-
-/**
- * Dexie database schema for mark-my-words.
- *
- * Schema indexes (the `'id, createdAt, sourceUrl'` syntax):
- *   - `id`         primary key
- *   - `createdAt`  indexed for newest-first queries
- *   - `sourceUrl`  indexed for "records from this domain" filters
- *
- * Other fields (selectedText, contextBefore, …, screenshotDataUrl) are
- * stored alongside but unindexed. Full-text search would need a
- * separate index strategy when we add it later.
- *
- * The IDB store name `snippets` is preserved from the pre-Record-rename
- * era so existing user data keeps working without a Dexie version bump.
- * Records of type 'page' simply omit the SelectionBody fields.
- */
-class MmwDatabase extends Dexie {
-  snippets!: Table<Record, string>;
-
-  constructor(name = 'mmw') {
-    super(name);
-    this.version(1).stores({
-      snippets: 'id, createdAt, sourceUrl',
-    });
-  }
-}
 
 /**
  * `Repository<T>` implementation backed by Dexie / IndexedDB.
@@ -48,8 +21,7 @@ export class IdbRepo implements Repository<Record> {
   private readonly table: Table<Record, string>;
 
   constructor(dbName?: string) {
-    const db = new MmwDatabase(dbName);
-    this.table = db.snippets;
+    this.table = getDatabase(dbName).snippets;
   }
 
   async getAll(): Promise<Record[]> {

@@ -9,7 +9,6 @@
 // Firefox parity (a stretch goal) can re-introduce the polyfill later.
 
 import pkg from '../../package.json' with { type: 'json' };
-import { MAX_SELECTION_CHARS, TOAST_VISIBLE_MS } from '../config.js';
 import { readPageInPage } from '../content/read-page.js';
 import { readSelectionInPage } from '../content/read-selection.js';
 import { showSaveCardInPage } from '../content/save-card.js';
@@ -17,7 +16,9 @@ import type { SaveCardArgs } from '../content/save-card.js';
 import { showToastInPage } from '../content/show-toast.js';
 import type { ToastVariant } from '../content/show-toast.js';
 import { errorMessage } from '../lib/error.js';
+import { stripTrackingParams } from '../lib/url.js';
 import { RecordService } from '../records/record-service.js';
+import { SettingsService } from '../settings/settings-service.js';
 import { createDispatcher } from '../shared/dispatcher.js';
 import { isMessage } from '../shared/messages.js';
 import type { Message, RecordEvent } from '../shared/messages.js';
@@ -30,6 +31,7 @@ console.log(`[mark-my-words] service worker booted (version ${VERSION})`);
 
 const repo = new IdbRepo();
 const records = new RecordService(repo);
+const settings = new SettingsService();
 const dispatch = createDispatcher({ records });
 
 // Wrap dispatch's response in an envelope so the sender can distinguish
@@ -187,9 +189,11 @@ async function handleSaveSelection(
     return;
   }
 
-  if (result.selectedText.length > MAX_SELECTION_CHARS) {
+  const cfg = await settings.get();
+
+  if (result.selectedText.length > cfg.maxSelectionChars) {
     console.log(
-      `[mark-my-words] selection too large (${String(result.selectedText.length)} chars)`,
+      `[mark-my-words] selection too large (${String(result.selectedText.length)} chars, limit ${String(cfg.maxSelectionChars)})`,
     );
     await showToast(resolvedTabId, 'info', 'Selection too large — try selecting less text');
     return;
@@ -197,25 +201,49 @@ async function handleSaveSelection(
 
   // Capture screenshot BEFORE save so the toast/save flow doesn't
   // visually interfere with the page (toast injection happens later in
-  // both the save-success and save-error branches).
-  const screenshotDataUrl = await captureScreenshot();
+  // both the save-success and save-error branches). Skipped when the
+  // user has disabled screenshot capture in settings.
+  const screenshotDataUrl = cfg.captureScreenshot ? await captureScreenshot() : undefined;
 
+  const sourceUrl = cfg.stripTrackingParams
+    ? stripTrackingParams(result.sourceUrl)
+    : result.sourceUrl;
+
+  await persistAndPresent(
+    resolvedTabId,
+    () =>
+      records.saveSelection({
+        ...result,
+        sourceUrl,
+        ...(screenshotDataUrl !== undefined && { screenshotDataUrl }),
+      }),
+    (saved) => `selection ${saved.id}: ${saved.selectedText.slice(0, 60)}`,
+  );
+}
+
+/**
+ * Run the persist call, broadcast `record:created`, and present the
+ * save card on success — or show an error toast on failure. Used by
+ * both selection and page save paths.
+ */
+async function persistAndPresent<T extends Record>(
+  tabId: number,
+  doSave: () => Promise<T>,
+  describe: (saved: T) => string,
+): Promise<void> {
   try {
-    const saved = await records.saveSelection({
-      ...result,
-      ...(screenshotDataUrl !== undefined && { screenshotDataUrl }),
-    });
-    console.log(`[mark-my-words] saved selection ${saved.id}: ${saved.selectedText.slice(0, 60)}`);
-    // Tell any open Library tab so it can update without a refetch. The
-    // typed message bus path (popup/options → SW) emits this in
+    const saved = await doSave();
+    console.log(`[mark-my-words] saved ${describe(saved)}`);
+    // Tell any open Library tab so it can update without a refetch.
+    // The typed message bus path (popup/options → SW) emits this in
     // broadcastRecordEvent; this path bypasses the dispatcher, so emit
     // directly.
     emitRecordEvent({ type: 'record:created', record: saved });
-    await presentSavedCard(resolvedTabId, saved);
+    await presentSavedCard(tabId, saved);
   } catch (error) {
     console.error('[mark-my-words] save failed:', error);
     const msg = error instanceof Error ? error.message : 'unknown error';
-    await showToast(resolvedTabId, 'error', `Save failed: ${msg}`);
+    await showToast(tabId, 'error', `Save failed: ${msg}`);
   }
 }
 
@@ -248,31 +276,32 @@ async function handleSavePage(tabId?: number): Promise<void> {
     return;
   }
 
-  const screenshotDataUrl = await captureScreenshot();
+  const cfg = await settings.get();
+  const screenshotDataUrl = cfg.captureScreenshot ? await captureScreenshot() : undefined;
+  const sourceUrl = cfg.stripTrackingParams
+    ? stripTrackingParams(pageMeta.sourceUrl)
+    : pageMeta.sourceUrl;
 
-  try {
-    const saved = await records.savePage({
-      ...pageMeta,
-      ...(screenshotDataUrl !== undefined && { screenshotDataUrl }),
-    });
-    console.log(`[mark-my-words] saved page ${saved.id}: ${saved.pageTitle.slice(0, 60)}`);
-    emitRecordEvent({ type: 'record:created', record: saved });
-    await presentSavedCard(resolvedTabId, saved);
-  } catch (error) {
-    console.error('[mark-my-words] save failed:', error);
-    const msg = error instanceof Error ? error.message : 'unknown error';
-    await showToast(resolvedTabId, 'error', `Save failed: ${msg}`);
-  }
+  await persistAndPresent(
+    resolvedTabId,
+    () =>
+      records.savePage({
+        ...pageMeta,
+        sourceUrl,
+        ...(screenshotDataUrl !== undefined && { screenshotDataUrl }),
+      }),
+    (saved) => `page ${saved.id}: ${saved.pageTitle.slice(0, 60)}`,
+  );
 }
 
 /** Compose card args from a freshly saved record and inject the card. */
 async function presentSavedCard(tabId: number, saved: Record): Promise<void> {
-  const allTags = await collectAllTags();
+  const [allTags, cfg] = await Promise.all([collectAllTags(), settings.get()]);
   await showCard(tabId, {
     recordId: saved.id,
     currentTags: saved.tags ?? [],
     allTags,
-    visibleMs: TOAST_VISIBLE_MS,
+    visibleMs: cfg.toastDurationMs,
   });
 }
 
@@ -320,11 +349,17 @@ async function showToast(
   message: string,
   snippetId?: string,
 ): Promise<void> {
+  // For info/error toasts we want them visible *long enough to read* even
+  // if the user set toastDurationMs to "Never" (=0) for the success pill.
+  // 0 → fall back to a 5s floor so error/info messages don't linger or
+  // disappear instantly.
+  const cfg = await settings.get();
+  const visibleMs = cfg.toastDurationMs > 0 ? cfg.toastDurationMs : 5000;
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
       func: showToastInPage,
-      args: [variant, message, TOAST_VISIBLE_MS, snippetId],
+      args: [variant, message, visibleMs, snippetId],
     });
   } catch (error) {
     console.warn('[mark-my-words] toast inject failed:', error);

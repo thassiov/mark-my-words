@@ -136,3 +136,58 @@ export type PageInput = Omit<Page, 'id' | 'type' | 'createdAt' | 'updatedAt'>;
 export interface RecordEdit {
   tags?: string[] | undefined;
 }
+
+// ---------------------------------------------------------------------------
+// User settings
+// ---------------------------------------------------------------------------
+
+/**
+ * Theme preference. `auto` defers to `prefers-color-scheme`. Stored
+ * with the user's data (travels with the file in file mode), not in
+ * chrome.storage.local.
+ */
+export type Theme = 'light' | 'dark' | 'auto';
+
+/**
+ * Per-user settings. Live in the `settings` Dexie store today,
+ * serialized as one row per key. Travel with the data file in file
+ * mode (MARK-43).
+ *
+ * Adding a setting: add a field here + a default in `DEFAULT_SETTINGS`,
+ * and any consumer can use `settings.<field>` after a `SettingsService.get()`.
+ * No schema-version bump needed for additive changes — missing keys
+ * fall back to the default automatically.
+ */
+export interface Settings {
+  /** Theme preference. */
+  theme: Theme;
+  /** Capture a page screenshot on save. */
+  captureScreenshot: boolean;
+  /**
+   * How long the post-save toast pill stays visible before
+   * auto-dismissing. `0` disables auto-dismiss entirely.
+   */
+  toastDurationMs: number;
+  /**
+   * Strip common URL tracking parameters (`utm_*`, `fbclid`, `gclid`,
+   * `mc_eid`, `ref`, `source`) from the source URL on save.
+   */
+  stripTrackingParams: boolean;
+  /**
+   * Maximum allowed character count for a saved selection. Selections
+   * exceeding this are rejected with a toast at save time.
+   */
+  maxSelectionChars: number;
+}
+
+/**
+ * Defaults applied on first run and as fallback for any key missing
+ * from the stored blob.
+ */
+export const DEFAULT_SETTINGS: Settings = {
+  theme: 'auto',
+  captureScreenshot: true,
+  toastDurationMs: 5000,
+  stripTrackingParams: true,
+  maxSelectionChars: 5000,
+};

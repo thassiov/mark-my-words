@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { Selection } from '../shared/types.js';
 
+import { resetDatabaseForTesting } from './database.js';
 import { IdbRepo } from './idb-repo.js';
 
 function baseSelection(overrides: Partial<Selection> = {}): Selection {
@@ -36,7 +37,10 @@ describe('IdbRepo', () => {
   let dbName: string;
 
   beforeEach(() => {
-    // Fresh DB per test so state doesn't leak.
+    // Fresh DB per test so state doesn't leak. The database module
+    // caches a singleton — reset it so each test gets a new instance
+    // bound to its own time-stamped dbName.
+    resetDatabaseForTesting();
     dbName = `mmw-test-${String(Date.now())}-${String(Math.random()).slice(2, 8)}`;
     repo = new IdbRepo(dbName);
   });
@@ -46,6 +50,7 @@ describe('IdbRepo', () => {
     // via onsuccess, but the test doesn't need to wait. Each test uses
     // a fresh, time-stamped dbName so reuse isn't a concern.
     indexedDB.deleteDatabase(dbName);
+    resetDatabaseForTesting();
   });
 
   describe('put + getById', () => {
