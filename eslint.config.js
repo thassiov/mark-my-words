@@ -178,18 +178,6 @@ export default tseslint.config(
       'sonarjs/cognitive-complexity': 'off',
     },
   },
-  {
-    // Tracked: split into src/app/components/* and hooks/*. The two
-    // big components and the file as a whole exceed the gates today.
-    files: ['src/app/app.tsx'],
-    rules: {
-      complexity: 'off',
-      'max-lines': 'off',
-      'max-lines-per-function': 'off',
-      'sonarjs/cognitive-complexity': 'off',
-      'sonarjs/no-nested-functions': 'off',
-    },
-  },
 
   // The strict + stylistic typeChecked configs above target all files by
   // default. Type-aware rules try to look these JS config files up in
