@@ -65,7 +65,7 @@ export function Sheet({ open, onClose, children }: SheetProps) {
         }`}
       />
       <div
-        className={`absolute inset-y-0 right-0 w-full transform bg-white shadow-2xl transition-transform duration-200 ease-out sm:w-[50vw] ${
+        className={`absolute inset-y-0 right-0 w-full transform bg-white shadow-2xl transition-transform duration-200 ease-out dark:bg-stone-900 sm:w-[50vw] ${
           visible ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
@@ -73,7 +73,7 @@ export function Sheet({ open, onClose, children }: SheetProps) {
           type="button"
           onClick={onClose}
           aria-label="Close panel"
-          className="absolute -left-5 top-6 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-stone-200 bg-white text-xl text-stone-700 shadow-md transition-colors hover:bg-stone-50"
+          className="absolute -left-5 top-6 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-stone-200 bg-white text-xl text-stone-700 shadow-md transition-colors hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200 dark:hover:bg-stone-700"
         >
           ×
         </button>

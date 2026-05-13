@@ -67,19 +67,21 @@ export function RecordDetail({ record, onDeleted, onUpdated, onTagClick }: Detai
         }}
       />
 
-      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto bg-stone-50 px-6 py-6">
+      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto bg-stone-50 px-6 py-6 dark:bg-stone-950">
         {record.type === 'selection' ? (
-          <blockquote className="rounded-xl bg-white px-6 py-5 font-serif text-[19px] leading-relaxed text-stone-900 shadow-sm ring-1 ring-stone-200/70">
+          <blockquote className="rounded-xl bg-white px-6 py-5 font-serif text-[19px] leading-relaxed text-stone-900 shadow-sm ring-1 ring-stone-200/70 dark:bg-stone-900 dark:text-stone-100 dark:ring-stone-700/70">
             “{record.selectedText}”
           </blockquote>
         ) : null}
 
         {record.type === 'selection' && (record.contextBefore || record.contextAfter) ? (
           <Collapsible label="In context">
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-stone-700">
-              <span className="text-stone-400">{record.contextBefore}</span>
-              <mark className="bg-yellow-200 px-0.5 text-stone-900">{record.selectedText}</mark>
-              <span className="text-stone-400">{record.contextAfter}</span>
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-stone-700 dark:text-stone-300">
+              <span className="text-stone-400 dark:text-stone-500">{record.contextBefore}</span>
+              <mark className="bg-yellow-200 px-0.5 text-stone-900 dark:bg-yellow-700/40 dark:text-stone-100">
+                {record.selectedText}
+              </mark>
+              <span className="text-stone-400 dark:text-stone-500">{record.contextAfter}</span>
             </p>
           </Collapsible>
         ) : null}
@@ -89,7 +91,7 @@ export function RecordDetail({ record, onDeleted, onUpdated, onTagClick }: Detai
             <img
               src={record.screenshotDataUrl}
               alt="Page at the moment of capture"
-              className="w-full rounded-md border border-stone-200"
+              className="w-full rounded-md border border-stone-200 dark:border-stone-700"
             />
           </Collapsible>
         ) : null}
@@ -100,7 +102,7 @@ export function RecordDetail({ record, onDeleted, onUpdated, onTagClick }: Detai
               href={record.iframeUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="break-all text-xs text-blue-600 hover:underline"
+              className="break-all text-xs text-blue-600 hover:underline dark:text-blue-400"
             >
               {record.iframeUrl}
             </a>

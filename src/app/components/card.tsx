@@ -15,7 +15,7 @@ import { TagChip } from './tag-chip.js';
  * reader registers it as a UI cue, not part of the content.
  */
 function MoreEllipsis() {
-  return <span className="text-stone-400">…</span>;
+  return <span className="text-stone-400 dark:text-stone-500">…</span>;
 }
 
 /**
@@ -70,8 +70,8 @@ export function Card({ record, isSelected, archived, activeTag, onClick, onTagCl
     archived && record.archivedAt !== undefined ? record.archivedAt : record.createdAt;
   const stripe = record.type === 'selection' ? 'bg-blue-400' : 'bg-emerald-400';
   const surface = isSelected
-    ? 'bg-amber-100 shadow-md'
-    : 'bg-amber-50/70 hover:-translate-y-0.5 hover:bg-amber-100/60 hover:shadow-md';
+    ? 'bg-amber-100 shadow-md dark:bg-amber-900/30'
+    : 'bg-amber-50/70 hover:-translate-y-0.5 hover:bg-amber-100/60 hover:shadow-md dark:bg-stone-800/60 dark:hover:bg-stone-800';
 
   const split =
     record.type === 'selection'
@@ -88,7 +88,7 @@ export function Card({ record, isSelected, archived, activeTag, onClick, onTagCl
       <header className="flex min-w-0 items-center gap-2">
         <Favicon sourceUrl={record.sourceUrl} />
         <span
-          className="min-w-0 flex-1 truncate text-xs text-stone-600"
+          className="min-w-0 flex-1 truncate text-xs text-stone-600 dark:text-stone-400 dark:text-stone-500"
           title={
             record.pageTitle
               ? `${hostnameOf(record.sourceUrl)} | ${record.pageTitle}`
@@ -98,19 +98,19 @@ export function Card({ record, isSelected, archived, activeTag, onClick, onTagCl
           <span className="font-medium">{hostnameOf(record.sourceUrl)}</span>
           {record.pageTitle ? (
             <>
-              <span className="px-1 text-stone-400">|</span>
+              <span className="px-1 text-stone-400 dark:text-stone-500">|</span>
               <span>{record.pageTitle}</span>
             </>
           ) : null}
         </span>
       </header>
 
-      <h3 className="mt-4 line-clamp-2 text-[17px] font-extrabold leading-tight text-stone-900">
+      <h3 className="mt-4 line-clamp-2 text-[17px] font-extrabold leading-tight text-stone-900 dark:text-stone-100">
         {renderCardTitle(record.type, split.first, split.rest.length > 0)}
       </h3>
 
       {split.rest.length > 0 ? (
-        <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-stone-700">
+        <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-stone-700 dark:text-stone-300">
           <MoreEllipsis />
           {split.rest}
         </p>
@@ -131,7 +131,7 @@ export function Card({ record, isSelected, archived, activeTag, onClick, onTagCl
         </div>
       ) : null}
 
-      <footer className="mt-auto flex items-center justify-between gap-2 pt-4 text-xs font-medium text-stone-600">
+      <footer className="mt-auto flex items-center justify-between gap-2 pt-4 text-xs font-medium text-stone-600 dark:text-stone-400 dark:text-stone-500">
         <span className="flex items-center gap-2">
           {record.type === 'selection' ? (
             <span>Selection: {wordCount(record.selectedText)} words</span>
@@ -140,7 +140,7 @@ export function Card({ record, isSelected, archived, activeTag, onClick, onTagCl
           )}
           {archived ? <ArchivedPill /> : null}
         </span>
-        <span className="text-stone-500">{formatRelative(dateIso)}</span>
+        <span className="text-stone-500 dark:text-stone-500">{formatRelative(dateIso)}</span>
       </footer>
     </article>
   );

@@ -1,1 +1,8 @@
 @import 'tailwindcss';
+
+/*
+ * Class-based dark mode. Tailwind v4 defaults to `prefers-color-scheme`;
+ * we want the user's explicit choice (light / dark / auto) to win, so
+ * the app sets `class="dark"` on <html> via `useResolvedTheme()`.
+ */
+@custom-variant dark (&:where(.dark, .dark *));

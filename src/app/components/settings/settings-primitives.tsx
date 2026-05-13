@@ -8,8 +8,10 @@ interface SettingsCardProps {
 /** Container for a group of settings rows under a labelled section. */
 export function SettingsCard({ title, children }: SettingsCardProps) {
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-5">
-      <h3 className="mb-4 text-xs font-bold uppercase tracking-wider text-gray-500">{title}</h3>
+    <section className="rounded-lg border border-gray-200 bg-white p-5 dark:border-stone-800 dark:bg-stone-900">
+      <h3 className="mb-4 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-stone-400">
+        {title}
+      </h3>
       <div className="space-y-4">{children}</div>
     </section>
   );
@@ -26,8 +28,10 @@ export function SettingRow({ label, description, children }: SettingRowProps) {
   return (
     <div className="flex items-start justify-between gap-4">
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium text-gray-900">{label}</div>
-        {description ? <div className="mt-0.5 text-xs text-gray-500">{description}</div> : null}
+        <div className="text-sm font-medium text-gray-900 dark:text-stone-100">{label}</div>
+        {description ? (
+          <div className="mt-0.5 text-xs text-gray-500 dark:text-stone-400">{description}</div>
+        ) : null}
       </div>
       <div className="flex-shrink-0">{children}</div>
     </div>
@@ -52,11 +56,11 @@ export function Toggle({ checked, disabled, onChange }: ToggleProps) {
         onChange(!checked);
       }}
       className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-        checked ? 'bg-stone-900' : 'bg-gray-300'
+        checked ? 'bg-stone-900 dark:bg-stone-300' : 'bg-gray-300 dark:bg-stone-700'
       }`}
     >
       <span
-        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${
+        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform dark:bg-stone-900 ${
           checked ? 'translate-x-5' : 'translate-x-0.5'
         }`}
       />

@@ -53,7 +53,7 @@ export function TagAdder({ record }: TagAdderProps) {
           e.stopPropagation();
           setOpen(true);
         }}
-        className="inline-flex items-center rounded-full border border-dashed border-gray-300 px-2 py-0.5 text-[11px] text-gray-500 hover:border-gray-400 hover:text-gray-700"
+        className="inline-flex items-center rounded-full border border-dashed border-gray-300 px-2 py-0.5 text-[11px] text-gray-500 hover:border-gray-400 hover:text-gray-700 dark:border-stone-600 dark:text-stone-400 dark:hover:border-stone-500 dark:hover:text-stone-200"
       >
         + tag
       </button>
@@ -85,7 +85,7 @@ export function TagAdder({ record }: TagAdderProps) {
       }}
       onBlur={() => void commit()}
       placeholder="tag…"
-      className="rounded-full border border-gray-300 px-2 py-0.5 text-[11px] focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+      className="rounded-full border border-gray-300 bg-white px-2 py-0.5 text-[11px] focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-100"
     />
   );
 }

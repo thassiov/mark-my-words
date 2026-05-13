@@ -50,8 +50,10 @@ export function NoteSection({ record, onUpdated, textareaRef }: NoteSectionProps
 
   return (
     <section>
-      <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-stone-600">Notes</h3>
-      <div className="rounded-lg bg-white p-4 ring-1 ring-stone-200/70">
+      <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-stone-600 dark:text-stone-400">
+        Notes
+      </h3>
+      <div className="rounded-lg bg-white p-4 ring-1 ring-stone-200/70 dark:bg-stone-900 dark:ring-stone-700/70">
         <textarea
           ref={textareaRef}
           value={draft}
@@ -66,7 +68,7 @@ export function NoteSection({ record, onUpdated, textareaRef }: NoteSectionProps
           }}
           placeholder="Write a note…"
           rows={3}
-          className="w-full resize-none border-0 bg-transparent text-sm leading-relaxed text-stone-900 placeholder-stone-400 focus:outline-none"
+          className="w-full resize-none border-0 bg-transparent text-sm leading-relaxed text-stone-900 placeholder-stone-400 focus:outline-none dark:text-stone-100 dark:placeholder-stone-500"
         />
         <div className="mt-2 flex justify-end">
           <button
@@ -75,7 +77,7 @@ export function NoteSection({ record, onUpdated, textareaRef }: NoteSectionProps
               void handlePost();
             }}
             disabled={posting || draft.trim().length === 0}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-stone-900 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-white transition-colors hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-stone-900 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-white transition-colors hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-stone-200 dark:text-stone-900 dark:hover:bg-stone-100"
           >
             {posting ? 'Posting…' : 'Post'}
           </button>
@@ -152,12 +154,14 @@ function NoteItem({ record, note, onUpdated }: NoteItemProps) {
   const edited = note.updatedAt !== note.createdAt;
 
   return (
-    <li className="rounded-lg bg-white p-4 ring-1 ring-stone-200/70">
+    <li className="rounded-lg bg-white p-4 ring-1 ring-stone-200/70 dark:bg-stone-900 dark:ring-stone-700/70">
       <header className="flex items-center justify-between gap-2 text-[11px]">
-        <span className="text-stone-500">
+        <span className="text-stone-500 dark:text-stone-400">
           Posted {formatRelative(note.createdAt)}
           {edited ? (
-            <span className="ml-1 text-stone-400">(edited {formatRelative(note.updatedAt)})</span>
+            <span className="ml-1 text-stone-400 dark:text-stone-500">
+              (edited {formatRelative(note.updatedAt)})
+            </span>
           ) : null}
         </span>
         <div className="flex items-center gap-1">
@@ -168,7 +172,7 @@ function NoteItem({ record, note, onUpdated }: NoteItemProps) {
                 setEditing(true);
               }}
               disabled={busy}
-              className="rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-700 transition-colors hover:bg-blue-700 hover:text-white disabled:opacity-50"
+              className="rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-700 transition-colors hover:bg-blue-700 hover:text-white disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-600 dark:hover:text-white"
             >
               Edit
             </button>
@@ -179,7 +183,7 @@ function NoteItem({ record, note, onUpdated }: NoteItemProps) {
               void handleDelete();
             }}
             disabled={busy}
-            className="rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-red-700 transition-colors hover:bg-red-700 hover:text-white disabled:opacity-50"
+            className="rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-red-700 transition-colors hover:bg-red-700 hover:text-white disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-600 dark:hover:text-white"
           >
             Delete
           </button>
@@ -200,7 +204,7 @@ function NoteItem({ record, note, onUpdated }: NoteItemProps) {
           }}
         />
       ) : (
-        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-stone-800">
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-stone-800 dark:text-stone-200">
           {note.text}
         </p>
       )}
@@ -235,7 +239,7 @@ function NoteEditForm({ draft, busy, onDraftChange, onSave, onCancel }: NoteEdit
           }
         }}
         rows={3}
-        className="mt-2 w-full resize-none rounded-md border border-stone-300 bg-white px-3 py-2 text-sm leading-relaxed text-stone-900 focus:border-stone-500 focus:outline-none focus:ring-2 focus:ring-stone-500/20"
+        className="mt-2 w-full resize-none rounded-md border border-stone-300 bg-white px-3 py-2 text-sm leading-relaxed text-stone-900 focus:border-stone-500 focus:outline-none focus:ring-2 focus:ring-stone-500/20 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-100"
         autoFocus
       />
       <div className="mt-2 flex justify-end gap-2">
@@ -243,7 +247,7 @@ function NoteEditForm({ draft, busy, onDraftChange, onSave, onCancel }: NoteEdit
           type="button"
           onClick={onCancel}
           disabled={busy}
-          className="rounded-md border border-stone-300 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-stone-700 transition-colors hover:bg-stone-100 disabled:opacity-50"
+          className="rounded-md border border-stone-300 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-stone-700 transition-colors hover:bg-stone-100 disabled:opacity-50 dark:border-stone-700 dark:text-stone-300 dark:hover:bg-stone-800"
         >
           Cancel
         </button>

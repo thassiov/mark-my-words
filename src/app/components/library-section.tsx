@@ -86,9 +86,11 @@ export function LibrarySection({ archived }: LibrarySectionProps) {
         ))}
       </datalist>
       <header className="mb-6 flex flex-wrap items-center gap-3">
-        <h2 className="text-xl font-semibold tracking-tight">{heading}</h2>
+        <h2 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-stone-100">
+          {heading}
+        </h2>
         {archived ? <ArchivedPill /> : null}
-        <p className="basis-full text-sm text-gray-600">{subtitle}</p>
+        <p className="basis-full text-sm text-gray-600 dark:text-stone-400">{subtitle}</p>
       </header>
 
       <LibraryToolbar
@@ -183,10 +185,10 @@ function LibraryToolbar({
         }}
         placeholder={archived ? 'Filter archived…' : 'Filter records…'}
         aria-label="Filter records"
-        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+        className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100 dark:placeholder-stone-500"
       />
       {activeTag === null ? null : (
-        <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
+        <div className="mt-2 flex items-center gap-2 text-xs text-gray-500 dark:text-stone-400">
           <span>Filtering by</span>
           <TagChip tag={activeTag} active onRemove={onClearActiveTag} />
         </div>
@@ -222,7 +224,9 @@ function LibraryListBody({
   return (
     <>
       {records !== null && records.length > 0 && filtered.length === 0 ? (
-        <p className="text-sm text-gray-500">No matches for &quot;{query}&quot;.</p>
+        <p className="text-sm text-gray-500 dark:text-stone-400">
+          No matches for &quot;{query}&quot;.
+        </p>
       ) : null}
 
       <div className="grid grid-cols-1 items-stretch gap-6 sm:grid-cols-2 xl:grid-cols-3">
@@ -251,18 +255,18 @@ function LibraryListBody({
 
 function EmptyState({ archived }: { archived: boolean }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-center">
+    <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-center dark:border-stone-800 dark:bg-stone-900">
       {archived ? (
         <>
-          <p className="text-sm text-gray-700">No archived records.</p>
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="text-sm text-gray-700 dark:text-stone-300">No archived records.</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-stone-400">
             Archive a record from the Library to keep it without cluttering the main list.
           </p>
         </>
       ) : (
         <>
-          <p className="text-sm text-gray-700">No records yet.</p>
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="text-sm text-gray-700 dark:text-stone-300">No records yet.</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-stone-400">
             Select text on any page and press Ctrl+Shift+S, or right-click → Save selection as
             record.
           </p>

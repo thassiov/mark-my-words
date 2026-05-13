@@ -40,14 +40,14 @@ export function DetailHeader({
   const tags = record.tags ?? [];
 
   return (
-    <header className="space-y-3 border-b border-stone-200 px-6 py-5">
+    <header className="space-y-3 border-b border-stone-200 px-6 py-5 dark:border-stone-800">
       <div className="flex min-w-0 items-center gap-2">
         <Favicon sourceUrl={record.sourceUrl} />
         <a
           href={record.sourceUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="min-w-0 flex-1 truncate text-xs text-stone-600 hover:underline"
+          className="min-w-0 flex-1 truncate text-xs text-stone-600 hover:underline dark:text-stone-400"
           title={
             record.pageTitle
               ? `${hostnameOf(record.sourceUrl)} | ${record.pageTitle}`
@@ -57,29 +57,33 @@ export function DetailHeader({
           <span className="font-medium">{hostnameOf(record.sourceUrl)}</span>
           {record.pageTitle ? (
             <>
-              <span className="px-1 text-stone-400">|</span>
+              <span className="px-1 text-stone-400 dark:text-stone-600">|</span>
               <span>{record.pageTitle}</span>
             </>
           ) : null}
         </a>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-stone-600">
+      <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-stone-600 dark:text-stone-400">
         <span>
           {record.type === 'selection'
             ? `Selection: ${String(wordCount(record.selectedText))} words`
             : 'Page'}
         </span>
-        <span aria-hidden="true" className="text-stone-400">
+        <span aria-hidden="true" className="text-stone-400 dark:text-stone-600">
           •
         </span>
-        <span className="text-stone-500">Saved {formatRelative(record.createdAt)}</span>
+        <span className="text-stone-500 dark:text-stone-500">
+          Saved {formatRelative(record.createdAt)}
+        </span>
         {archivedAt === undefined ? null : (
           <>
-            <span aria-hidden="true" className="text-stone-400">
+            <span aria-hidden="true" className="text-stone-400 dark:text-stone-600">
               •
             </span>
-            <span className="text-stone-500">Archived {formatRelative(archivedAt)}</span>
+            <span className="text-stone-500 dark:text-stone-500">
+              Archived {formatRelative(archivedAt)}
+            </span>
             <ArchivedPill />
           </>
         )}
@@ -111,7 +115,7 @@ export function DetailHeader({
         <button
           type="button"
           onClick={onEdit}
-          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-blue-700 transition-colors hover:bg-blue-700 hover:text-white"
+          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-blue-700 transition-colors hover:bg-blue-700 hover:text-white dark:text-blue-400 dark:hover:bg-blue-600 dark:hover:text-white"
         >
           Edit
         </button>
@@ -119,7 +123,7 @@ export function DetailHeader({
           type="button"
           onClick={onArchiveToggle}
           disabled={archiving}
-          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-stone-700 transition-colors hover:bg-stone-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-stone-700 transition-colors hover:bg-stone-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 dark:text-stone-300 dark:hover:bg-stone-200 dark:hover:text-stone-900"
         >
           {archiveLabel(archiving, isArchived)}
         </button>
@@ -127,7 +131,7 @@ export function DetailHeader({
           type="button"
           onClick={onDelete}
           disabled={deleting}
-          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-red-700 transition-colors hover:bg-red-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-red-700 transition-colors hover:bg-red-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-600 dark:hover:text-white"
         >
           {deleting ? '…' : 'Delete'}
         </button>
