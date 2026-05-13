@@ -129,6 +129,12 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-call': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
+      // Mock libraries (vitest-mock-extended, vi.fn) surface method refs to
+      // tests for `.toHaveBeenCalledWith` etc. Binding them defeats the purpose.
+      '@typescript-eslint/unbound-method': 'off',
+      // Some union-narrowing assertions look "unnecessary" to the rule but
+      // are needed because the literal omits an optional discriminator field.
+      '@typescript-eslint/no-unnecessary-type-assertion': 'off',
       // Tests build inline DOM helpers and assertion helpers — extracting
       // every nested function fights the locality of the tests they support.
       'unicorn/consistent-function-scoping': 'off',
