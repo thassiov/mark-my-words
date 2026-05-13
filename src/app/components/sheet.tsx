@@ -64,7 +64,7 @@ export function Sheet({ open, onClose, children }: SheetProps) {
           visible ? 'opacity-100' : 'opacity-0'
         }`}
       />
-      <aside
+      <div
         className={`absolute inset-y-0 right-0 w-full transform bg-white shadow-2xl transition-transform duration-200 ease-out sm:w-[50vw] ${
           visible ? 'translate-x-0' : 'translate-x-full'
         }`}
@@ -78,7 +78,7 @@ export function Sheet({ open, onClose, children }: SheetProps) {
           ×
         </button>
         {children}
-      </aside>
+      </div>
     </div>,
     document.body,
   );

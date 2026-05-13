@@ -19,6 +19,7 @@
     "e2e": "playwright test",
     "e2e:install": "playwright install --with-deps chromium",
     "e2e:build": "vite build && playwright test",
+    "e2e:ci": "vite build && playwright test --reporter=list",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -30,7 +31,8 @@
     "type-coverage": "type-coverage --strict --at-least 99",
     "audit": "pnpm audit --prod --audit-level high",
     "static": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm knip && pnpm deps:circular && pnpm deps:boundaries && pnpm type-coverage",
-    "verify": "pnpm static && pnpm test && pnpm build"
+    "verify": "pnpm static && pnpm test:coverage && pnpm build",
+    "verify:full": "pnpm verify && pnpm e2e:ci"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "2.0.0-beta.33",
