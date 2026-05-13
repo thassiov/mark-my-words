@@ -10,14 +10,15 @@
  *   storage/  — pure persistence. May import shared/ only.
  *   snippets/ — domain service. May import shared/, storage/.
  *   content/  — page-injected scripts. May import shared/. Must NOT
- *               import from background/, options/, popup/, snippets/,
+ *               import from background/, app/, popup/, snippets/,
  *               storage/ (those would pull in modules unavailable in the
  *               injected context).
- *   options/  — UI page. Must use shared/ + send.ts to talk to SW;
- *               must NOT import background/ or content/ runtime files.
- *   popup/    — same constraints as options/.
+ *   app/      — UI page (Library + Archived + Settings tabs). Must use
+ *               shared/ + send.ts to talk to SW; must NOT import
+ *               background/ or content/ runtime files.
+ *   popup/    — same constraints as app/.
  *   background/ — composition root for the SW. May import everything
- *                 except UI (options/popup).
+ *                 except UI (app/popup).
  *   lib/      — small utilities; may not import from anything but itself.
  */
 module.exports = {
@@ -53,13 +54,7 @@ module.exports = {
         'src/shared/ is the message bus + types. It must not pull in UI, content scripts, background, or storage.',
       from: { path: '^src/shared/' },
       to: {
-        path: [
-          '^src/options/',
-          '^src/popup/',
-          '^src/background/',
-          '^src/content/',
-          '^src/storage/',
-        ],
+        path: ['^src/app/', '^src/popup/', '^src/background/', '^src/content/', '^src/storage/'],
       },
     },
     {
@@ -68,13 +63,7 @@ module.exports = {
       comment: 'src/storage/ is pure persistence. Only shared/ + lib/ may be imported.',
       from: { path: '^src/storage/' },
       to: {
-        path: [
-          '^src/options/',
-          '^src/popup/',
-          '^src/background/',
-          '^src/content/',
-          '^src/snippets/',
-        ],
+        path: ['^src/app/', '^src/popup/', '^src/background/', '^src/content/', '^src/snippets/'],
       },
     },
     {
@@ -84,28 +73,22 @@ module.exports = {
         'src/content/ runs in the page context (injected via executeScript). It must not import background/, snippets/, storage/, or any UI module.',
       from: { path: '^src/content/' },
       to: {
-        path: [
-          '^src/background/',
-          '^src/snippets/',
-          '^src/storage/',
-          '^src/options/',
-          '^src/popup/',
-        ],
+        path: ['^src/background/', '^src/snippets/', '^src/storage/', '^src/app/', '^src/popup/'],
       },
     },
     {
-      name: 'options-no-direct-sw',
+      name: 'app-no-direct-sw',
       severity: 'error',
       comment:
-        'src/options/ talks to the SW only via shared/messages.ts + send.ts. Importing background/ or content/ directly is a layering violation.',
-      from: { path: '^src/options/' },
+        'src/app/ talks to the SW only via shared/messages.ts + send.ts. Importing background/ or content/ directly is a layering violation.',
+      from: { path: '^src/app/' },
       to: { path: ['^src/background/', '^src/content/'] },
     },
     {
       name: 'popup-no-direct-sw',
       severity: 'error',
       comment:
-        'src/popup/ talks to the SW only via shared/. Importing background/ or content/ directly is a layering violation.',
+        'src/popup/ talks to the SW only via shared/ + send.ts. Importing background/ or content/ directly is a layering violation.',
       from: { path: '^src/popup/' },
       to: { path: ['^src/background/', '^src/content/'] },
     },
@@ -119,7 +102,7 @@ module.exports = {
           '^src/shared/',
           '^src/snippets/',
           '^src/storage/',
-          '^src/options/',
+          '^src/app/',
           '^src/popup/',
           '^src/background/',
           '^src/content/',

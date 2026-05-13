@@ -4,7 +4,7 @@
 // Connects to Chromium's CDP endpoint and tries, in order:
 //   1. The extension's service-worker target → eval `chrome.runtime.reload()`
 //      (preferred; cheap and direct)
-//   2. A chrome-extension://… page (popup or options) → same eval
+//   2. A chrome-extension://… page (popup or app) → same eval
 //   3. A chrome://extensions/ tab → `chrome.developerPrivate.reload(id)`
 //      looked up by package.json `name`. Survives across SW dormancy.
 //
@@ -131,7 +131,7 @@ async function main() {
     return;
   }
 
-  // Strategy 2: any extension page (popup/options/etc.)
+  // Strategy 2: any extension page (popup/app/etc.)
   const extPage = targets.find(
     (t) =>
       t.type === 'page' && typeof t.url === 'string' && t.url.startsWith('chrome-extension://'),

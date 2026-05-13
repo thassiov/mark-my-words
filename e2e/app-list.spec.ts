@@ -1,11 +1,11 @@
 import { expect, test } from './fixtures.js';
-import { makeSelection, openOptionsWith } from './seed.js';
+import { makeSelection, openAppWith } from './seed.js';
 
 const TINY_PNG =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=';
 
 test('list renders seeded snippets newest-first', async ({ context, extensionId }) => {
-  const page = await openOptionsWith(context, extensionId, [
+  const page = await openAppWith(context, extensionId, [
     makeSelection({
       createdAt: '2026-01-01T10:00:00.000Z',
       selectedText: 'oldest snippet body',
@@ -29,7 +29,7 @@ test('list renders seeded snippets newest-first', async ({ context, extensionId 
 });
 
 test('filter narrows by selectedText, title, and hostname', async ({ context, extensionId }) => {
-  const page = await openOptionsWith(context, extensionId, [
+  const page = await openAppWith(context, extensionId, [
     makeSelection({
       createdAt: '2026-02-01T10:00:00.000Z',
       selectedText: 'apples are red',
@@ -74,7 +74,7 @@ test('clicking a card opens the detail pane with text and metadata', async ({
   context,
   extensionId,
 }) => {
-  const page = await openOptionsWith(context, extensionId, [
+  const page = await openAppWith(context, extensionId, [
     makeSelection({
       createdAt: '2026-02-10T10:00:00.000Z',
       selectedText: 'detailed selection content',
@@ -99,7 +99,7 @@ test('clicking a card opens the detail pane with text and metadata', async ({
 });
 
 test('detail close button hides the pane', async ({ context, extensionId }) => {
-  const page = await openOptionsWith(context, extensionId, [
+  const page = await openAppWith(context, extensionId, [
     makeSelection({
       createdAt: '2026-02-15T10:00:00.000Z',
       selectedText: 'closeable snippet',
@@ -117,7 +117,7 @@ test('detail pane renders the captured screenshot when present', async ({
   context,
   extensionId,
 }) => {
-  const page = await openOptionsWith(context, extensionId, [
+  const page = await openAppWith(context, extensionId, [
     makeSelection({
       createdAt: '2026-02-20T10:00:00.000Z',
       selectedText: 'snippet with image',

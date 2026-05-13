@@ -40,7 +40,7 @@ export const manifest: ManifestV3Export = {
   },
   permissions: ['storage', 'activeTab', 'scripting', 'contextMenus'],
   options_ui: {
-    page: 'src/options/options.html',
+    page: 'src/app/app.html',
     open_in_tab: true,
   },
   commands: {

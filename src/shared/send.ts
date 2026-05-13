@@ -15,7 +15,7 @@ type Envelope<T> = { ok: true; value: T } | { ok: false; error: string };
 /**
  * Send a message to the service worker and await its response.
  *
- * Used by content scripts, popup, and options page. Service-worker code
+ * Used by content scripts, popup, and app page. Service-worker code
  * must not call this — the SW is the receiver, not a sender.
  */
 export async function send<M extends Message>(msg: M): Promise<Response<M['type']>> {

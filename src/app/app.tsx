@@ -888,7 +888,7 @@ interface SheetProps {
  * Radix Dialog) since we only need ESC/backdrop dismiss and a portal.
  *
  * Mounted via createPortal to document.body so the panel and its
- * backdrop sit above the rest of the options page layout regardless of
+ * backdrop sit above the rest of the app page layout regardless of
  * where the parent component tree is.
  */
 function Sheet({ open, onClose, children }: SheetProps) {
@@ -976,7 +976,7 @@ function LibrarySection({ archived }: LibrarySectionProps) {
   const [query, setQuery] = useState('');
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(() => {
-    // Support deep-link via URL hash: options.html#<record-id>
+    // Support deep-link via URL hash: app.html#<record-id>
     const hash = location.hash.slice(1);
     return hash || null;
   });

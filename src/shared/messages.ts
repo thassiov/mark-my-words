@@ -25,7 +25,7 @@ export function isRecordEvent(v: unknown): v is RecordEvent {
 
 /**
  * Message envelopes exchanged between extension contexts (content script,
- * popup, options page, service worker).
+ * popup, app page, service worker).
  *
  * Each variant has a string `type` discriminator. New message types are
  * added here; the dispatcher's exhaustive switch then enforces that

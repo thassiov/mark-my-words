@@ -21,7 +21,7 @@ interface UseSettings {
 }
 
 /**
- * Live-updating settings hook for the options page. Wraps Dexie's
+ * Live-updating settings hook for the app page. Wraps Dexie's
  * `liveQuery` — any write (from this tab or another) refreshes the
  * value automatically.
  */

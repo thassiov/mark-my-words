@@ -36,17 +36,17 @@ button on the mark-my-words card.
 
 ### Opening extension pages
 
-The options page (Library + Settings) is a full-tab page registered
-as `options_ui`. Open it via:
+The app page (Library + Archived + Settings) is a full-tab page
+registered as `options_ui`. Open it via:
 
 ```
-chrome-extension://oamhknobaghfeecoocfppladagbfhgmc/src/options/options.html
+chrome-extension://oamhknobaghfeecoocfppladagbfhgmc/src/app/app.html
 ```
 
-Deep-link to a specific snippet by appending `#<snippet-id>`:
+Deep-link to a specific record by appending `#<record-id>`:
 
 ```
-chrome-extension://oamhknobaghfeecoocfppladagbfhgmc/src/options/options.html#<id>
+chrome-extension://oamhknobaghfeecoocfppladagbfhgmc/src/app/app.html#<id>
 ```
 
 The popup can be opened directly too (bypasses the toolbar-click
@@ -107,7 +107,7 @@ events.
 Workarounds:
 
 - Verify shortcut registration via `chrome.commands.getAll()` from the
-  popup or options page.
+  popup or app page.
 - Unit-test the page-side function the shortcut calls.
 - Manual smoke: press the chord in the live browser window and inspect
   the result.
@@ -129,7 +129,7 @@ during testing — just be aware screenshots won't appear for those pages.
 | Snippet type + edit shape                           | `src/shared/types.ts`              |
 | Message bus (all SW messages)                       | `src/shared/messages.ts`           |
 | Service worker (save flow, context menu, shortcuts) | `src/background/service-worker.ts` |
-| Library + Settings UI                               | `src/options/options.tsx`          |
+| Library + Archived + Settings UI                    | `src/app/app.tsx`                  |
 | Popup                                               | `src/popup/popup.tsx`              |
 | Toast injected into pages                           | `src/content/show-toast.ts`        |
 | Selection reader injected into pages                | `src/content/read-selection.ts`    |

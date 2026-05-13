@@ -43,7 +43,7 @@ chrome.runtime.onMessage.addListener((raw: unknown, _sender, sendResponse) => {
   // Handle save-card click navigation requests (not part of the typed message bus).
   if (isOpenRecordRequest(raw)) {
     void chrome.tabs.create({
-      url: `chrome-extension://${chrome.runtime.id}/src/options/options.html#${raw.id}`,
+      url: `chrome-extension://${chrome.runtime.id}/src/app/app.html#${raw.id}`,
     });
     sendResponse(null);
     return;
@@ -235,7 +235,7 @@ async function persistAndPresent<T extends Record>(
     const saved = await doSave();
     console.log(`[mark-my-words] saved ${describe(saved)}`);
     // Tell any open Library tab so it can update without a refetch.
-    // The typed message bus path (popup/options → SW) emits this in
+    // The typed message bus path (popup/app → SW) emits this in
     // broadcastRecordEvent; this path bypasses the dispatcher, so emit
     // directly.
     emitRecordEvent({ type: 'record:created', record: saved });
@@ -307,7 +307,7 @@ async function presentSavedCard(tabId: number, saved: Record): Promise<void> {
 
 /**
  * Compute the union of tags across all (non-archived) records, sorted
- * alphabetically. Mirrors the options-page `allTags` derivation so the
+ * alphabetically. Mirrors the app-page `allTags` derivation so the
  * suggestions row in the save card matches what the Library shows.
  */
 async function collectAllTags(): Promise<string[]> {

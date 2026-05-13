@@ -179,9 +179,9 @@ export default tseslint.config(
     },
   },
   {
-    // Tracked: split into src/options/components/* and hooks/*. The two
+    // Tracked: split into src/app/components/* and hooks/*. The two
     // big components and the file as a whole exceed the gates today.
-    files: ['src/options/options.tsx'],
+    files: ['src/app/app.tsx'],
     rules: {
       complexity: 'off',
       'max-lines': 'off',

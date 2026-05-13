@@ -17,22 +17,23 @@ together, and how to find your way back to any piece of it.
 
 A Manifest V3 browser extension that captures **records** of two kinds
 from the current tab — text selections (with surrounding context) and
-whole pages — and stores them locally in IndexedDB. A separate options
-page lets you browse, filter, and inspect saved records.
+whole pages — and stores them locally in IndexedDB. A separate app
+page (registered as `options_ui`) lets you browse, filter, inspect, and
+configure saved records.
 
 There is no account, no remote server, no sync, and no telemetry.
 Everything lives in the browser profile.
 
 ## Feature set
 
-| Feature                  | Trigger                                                             | Where it happens                |
-| ------------------------ | ------------------------------------------------------------------- | ------------------------------- |
-| Save selection           | Right-click → "Save selection as snippet"                           | Service worker                  |
-| Save selection (alt)     | `Ctrl+Shift+S` while text is selected                               | Service worker                  |
-| Save confirmation        | Toast injected into the page                                        | Content script                  |
-| Page snapshot            | Captured at save time, JPEG q=70                                    | `chrome.tabs.captureVisibleTab` |
-| Recent list              | Toolbar icon → popup                                                | Popup (Preact)                  |
-| Browse + filter + detail | Options page (`chrome://extensions/` → Details → Extension options) | Options (Preact)                |
+| Feature                  | Trigger                                                         | Where it happens                |
+| ------------------------ | --------------------------------------------------------------- | ------------------------------- |
+| Save selection           | Right-click → "Save selection as snippet"                       | Service worker                  |
+| Save selection (alt)     | `Ctrl+Shift+S` while text is selected                           | Service worker                  |
+| Save confirmation        | Toast injected into the page                                    | Content script                  |
+| Page snapshot            | Captured at save time, JPEG q=70                                | `chrome.tabs.captureVisibleTab` |
+| Recent list              | Toolbar icon → popup                                            | Popup (Preact)                  |
+| Browse + filter + detail | App page (`chrome://extensions/` → Details → Extension options) | App (Preact)                    |
 
 ## High-level component diagram
 
@@ -53,7 +54,7 @@ flowchart LR
     svc["SnippetService"]
     repo["IdbRepo (Dexie)"]
     popup["Popup<br/>(Preact)"]
-    opts["Options page<br/>(Preact)"]
+    opts["App page<br/>(Preact)"]
   end
 
   idb[("IndexedDB<br/>'mmw' / snippets")]
@@ -81,7 +82,7 @@ flowchart LR
 ```
 
 The service worker is the only piece that touches IndexedDB. The popup
-and options page send envelope-wrapped messages
+and app page send envelope-wrapped messages
 (`{ ok, value } | { ok, error }`) and never open the DB themselves.
 
 ## Save flow
@@ -123,7 +124,7 @@ Notes:
 ```mermaid
 sequenceDiagram
   autonumber
-  participant Page as Options page (Preact)
+  participant Page as App page (Preact)
   participant SW as Service worker
   participant DB as IndexedDB ('mmw')
 
@@ -210,10 +211,10 @@ src/
 │   ├── popup.tsx            Recent snippets — minimal list
 │   ├── snippet-list.tsx
 │   └── styles.ts
-├── options/
-│   ├── options.html
-│   ├── options.css          Just `@import "tailwindcss";`
-│   └── options.tsx          List + filter + detail pane (with animation)
+├── app/
+│   ├── app.html
+│   ├── app.css              Just `@import "tailwindcss";`
+│   └── app.tsx              Library + Archived + Settings tabs
 ├── shared/
 │   ├── types.ts             Snippet, SnippetInput, SnippetEdit
 │   ├── messages.ts          Message types + isMessage guard
@@ -236,8 +237,8 @@ src/**/*.test.ts             Vitest units (happy-dom + fake-indexeddb)
 e2e/
 ├── fixtures.ts              Persistent context loads dist/, exposes extensionId
 ├── seed.ts                  Raw-IDB seeding helpers + makeSnippet factory
-├── options-smoke.spec.ts    Empty-state smoke
-└── options-list.spec.ts     5 specs: list, filter, detail open, close, screenshot
+├── app-smoke.spec.ts        Empty-state smoke
+└── app-list.spec.ts         5 specs: list, filter, detail open, close, screenshot
 ```
 
 ## Build and reload workflow

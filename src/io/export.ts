@@ -39,7 +39,7 @@ export interface BuildExportDeps {
  *
  * Provenance defaults read from extension APIs (`chrome.runtime` /
  * `navigator`) — present in every browser context where this function
- * is legitimately called (options page, popup, background SW with a
+ * is legitimately called (app page, popup, background SW with a
  * compatibility shim). Tests override `provenance` to keep the function
  * pure.
  */

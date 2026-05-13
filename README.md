@@ -67,7 +67,7 @@ Project notes and per-task investigation files live in
 - WebExtension Manifest V3 (Chromium-first)
 - TypeScript strict
 - Vite + `@crxjs/vite-plugin`
-- Preact + Tailwind v4 (popup and options page)
+- Preact + Tailwind v4 (popup and app page)
 - Dexie / IndexedDB for storage
 - Vitest + happy-dom for units; Playwright for e2e
 

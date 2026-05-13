@@ -3,17 +3,17 @@ import { type BrowserContext, expect, type Page } from '@playwright/test';
 import type { Page as PageRecord, Record, Selection } from '../src/shared/types.js';
 
 /**
- * Open the options page, wait for it to finish its initial load
+ * Open the app page, wait for it to finish its initial load
  * (so Dexie has fully initialized its DB schema), seed records via
  * raw IDB, then reload so the App picks them up.
  */
-export async function openOptionsWith(
+export async function openAppWith(
   context: BrowserContext,
   extensionId: string,
   records: Record[],
 ): Promise<Page> {
   const page = await context.newPage();
-  await page.goto(`chrome-extension://${extensionId}/src/options/options.html`);
+  await page.goto(`chrome-extension://${extensionId}/src/app/app.html`);
   // Wait for the initial empty-load to complete — guarantees the SW's
   // Dexie open() has finished before raw IDB writes happen.
   await expect(page.getByText('No records yet.')).toBeVisible();
