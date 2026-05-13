@@ -3,6 +3,7 @@ import type { Theme } from '../../../shared/types.js';
 
 import { DataCard } from './data-card.js';
 import { SettingRow, SettingsCard, Toggle } from './settings-primitives.js';
+import { TagsCard } from './tags-card.js';
 
 export function SettingsSection() {
   const { settings, loading, update } = useSettings();
@@ -106,6 +107,8 @@ export function SettingsSection() {
             </select>
           </SettingRow>
         </SettingsCard>
+
+        <TagsCard />
 
         <DataCard />
 

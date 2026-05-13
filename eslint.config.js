@@ -145,6 +145,7 @@ export default tseslint.config(
       // for production code don't apply.
       'max-lines': 'off',
       'max-lines-per-function': 'off',
+      'max-nested-callbacks': 'off',
       'max-statements': 'off',
       'sonarjs/cognitive-complexity': 'off',
       'sonarjs/no-nested-functions': 'off',

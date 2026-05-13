@@ -23,20 +23,23 @@ function isNoReceiverError(err: unknown): boolean {
 }
 
 /**
- * Translate a successfully-dispatched message into the RecordEvent its
- * UI listeners expect. Returns null for message types that don't fan
- * out (e.g. `record:list`, `record:count`).
+ * Translate a successfully-dispatched message into the RecordEvents its
+ * UI listeners expect. Returns an empty array for types that don't fan
+ * out (e.g. `record:list`, `record:count`, `tag:list`).
  *
- * Exported so the SW shim and tests can share the same routing table.
+ * Most message types yield exactly one event. Tag CRUD operations
+ * (`tag:rename`, `tag:merge`, `tag:delete`) yield one `record:updated`
+ * per touched record — the dispatcher returns the touched array and we
+ * unroll it here.
  */
-export function recordEventForMessage(msg: Message, value: unknown): RecordEvent | null {
+export function recordEventsForMessage(msg: Message, value: unknown): RecordEvent[] {
   switch (msg.type) {
     case 'record:save-selection':
     case 'record:save-page': {
-      return { type: 'record:created', record: value as Record };
+      return [{ type: 'record:created', record: value as Record }];
     }
     case 'record:delete': {
-      return { type: 'record:deleted', id: msg.payload.id };
+      return [{ type: 'record:deleted', id: msg.payload.id }];
     }
     case 'record:update':
     case 'record:archive':
@@ -44,19 +47,26 @@ export function recordEventForMessage(msg: Message, value: unknown): RecordEvent
     case 'record:add-note':
     case 'record:edit-note':
     case 'record:delete-note': {
-      return { type: 'record:updated', record: value as Record };
+      return [{ type: 'record:updated', record: value as Record }];
+    }
+    case 'tag:rename':
+    case 'tag:merge':
+    case 'tag:delete': {
+      const touched = (value ?? []) as Record[];
+      return touched.map((record) => ({ type: 'record:updated', record }));
     }
     default: {
-      return null;
+      return [];
     }
   }
 }
 
 /**
- * Send the appropriate RecordEvent for a successfully-dispatched
+ * Send the appropriate RecordEvent(s) for a successfully-dispatched
  * message, or no-op if the message type doesn't fan out.
  */
 export function broadcastRecordEvent(chromeApi: ChromeApi, msg: Message, value: unknown): void {
-  const event = recordEventForMessage(msg, value);
-  if (event !== null) emitRecordEvent(chromeApi, event);
+  for (const event of recordEventsForMessage(msg, value)) {
+    emitRecordEvent(chromeApi, event);
+  }
 }

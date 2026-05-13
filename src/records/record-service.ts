@@ -229,6 +229,99 @@ export class RecordService {
     await this.repo.put(updated);
     return updated;
   }
+
+  /**
+   * Sorted, de-duplicated union of all tags across every record (active
+   * and archived). Source of truth for the tag manager UI.
+   */
+  async listAllTags(): Promise<string[]> {
+    const all = await this.repo.getAll();
+    const set = new Set<string>();
+    for (const r of all) for (const t of r.tags ?? []) set.add(t);
+    return [...set].toSorted();
+  }
+
+  /**
+   * Rename a tag globally. Rejects if the target name already exists on
+   * any record (use {@link mergeTag} to combine two tags instead).
+   * Returns every record that was touched so callers can fan out
+   * `record:updated` events.
+   */
+  async renameTag(from: string, to: string): Promise<Record[]> {
+    const normFrom = from.trim().toLowerCase();
+    const normTo = to.trim().toLowerCase();
+    if (normFrom.length === 0 || normTo.length === 0) {
+      throw new Error('Tag name cannot be empty');
+    }
+    if (normFrom === normTo) return [];
+    const all = await this.repo.getAll();
+    const conflicts = all.some((r) => (r.tags ?? []).includes(normTo));
+    if (conflicts) {
+      throw new Error(`A tag named "${normTo}" already exists. Use merge instead.`);
+    }
+    return this.applyTagMap(
+      all,
+      (tags) => tags.map((t) => (t === normFrom ? normTo : t)),
+      normFrom,
+    );
+  }
+
+  /**
+   * Merge `from` into `into`. Records that had only `from` end up with
+   * `into`; records that had both keep `into` once (the normalization
+   * pass dedupes). `from` is gone after the operation.
+   */
+  async mergeTag(from: string, into: string): Promise<Record[]> {
+    const normFrom = from.trim().toLowerCase();
+    const normInto = into.trim().toLowerCase();
+    if (normFrom.length === 0 || normInto.length === 0) {
+      throw new Error('Tag name cannot be empty');
+    }
+    if (normFrom === normInto) return [];
+    const all = await this.repo.getAll();
+    return this.applyTagMap(
+      all,
+      (tags) => tags.map((t) => (t === normFrom ? normInto : t)),
+      normFrom,
+    );
+  }
+
+  /** Remove the named tag from every record that has it. */
+  async deleteTag(name: string): Promise<Record[]> {
+    const norm = name.trim().toLowerCase();
+    if (norm.length === 0) throw new Error('Tag name cannot be empty');
+    const all = await this.repo.getAll();
+    return this.applyTagMap(all, (tags) => tags.filter((t) => t !== norm), norm);
+  }
+
+  /**
+   * Walk every record, apply `mapTags` to records that currently carry
+   * `mustHave`, persist the changes, and return the touched set. The
+   * `mustHave` gate is a cheap early-out so we don't rewrite the entire
+   * library when only a handful of records carry the affected tag.
+   */
+  private async applyTagMap(
+    all: Record[],
+    mapTags: (tags: string[]) => string[],
+    mustHave: string,
+  ): Promise<Record[]> {
+    const now = nowIso();
+    const touched: Record[] = [];
+    for (const rec of all) {
+      const tags = rec.tags ?? [];
+      if (!tags.includes(mustHave)) continue;
+      const next = normalizeTags(mapTags(tags));
+      const updated: Record = { ...rec, updatedAt: now };
+      if (next.length === 0) {
+        delete updated.tags;
+      } else {
+        updated.tags = next;
+      }
+      await this.repo.put(updated);
+      touched.push(updated);
+    }
+    return touched;
+  }
 }
 
 /** Normalize tags in-place; drop the field if normalization leaves it empty. */

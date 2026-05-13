@@ -56,7 +56,11 @@ export type Message =
   | { type: 'record:unarchive'; payload: { id: string } }
   | { type: 'record:add-note'; payload: { id: string; text: string } }
   | { type: 'record:edit-note'; payload: { id: string; noteId: string; text: string } }
-  | { type: 'record:delete-note'; payload: { id: string; noteId: string } };
+  | { type: 'record:delete-note'; payload: { id: string; noteId: string } }
+  | { type: 'tag:list' }
+  | { type: 'tag:rename'; payload: { from: string; to: string } }
+  | { type: 'tag:merge'; payload: { from: string; into: string } }
+  | { type: 'tag:delete'; payload: { name: string } };
 
 /**
  * Maps a message type to its expected response shape.
@@ -79,7 +83,29 @@ export type Response<T extends Message['type']> = T extends 'record:save-selecti
                 | 'record:edit-note'
                 | 'record:delete-note'
             ? Record
-            : never;
+            : T extends 'tag:list'
+              ? string[]
+              : T extends 'tag:rename' | 'tag:merge' | 'tag:delete'
+                ? Record[]
+                : never;
+
+const MESSAGE_TYPES: ReadonlySet<string> = new Set<Message['type']>([
+  'record:save-selection',
+  'record:save-page',
+  'record:list',
+  'record:count',
+  'record:delete',
+  'record:update',
+  'record:archive',
+  'record:unarchive',
+  'record:add-note',
+  'record:edit-note',
+  'record:delete-note',
+  'tag:list',
+  'tag:rename',
+  'tag:merge',
+  'tag:delete',
+]);
 
 /**
  * Runtime-side guard. Cheap structural check; the real type-safety is
@@ -91,18 +117,5 @@ export function isMessage(v: unknown): v is Message {
   // eslint-disable-next-line @typescript-eslint/consistent-indexed-object-style
   const obj = v as { [k: string]: unknown };
   const t = obj['type'];
-  if (typeof t !== 'string') return false;
-  return (
-    t === 'record:save-selection' ||
-    t === 'record:save-page' ||
-    t === 'record:list' ||
-    t === 'record:count' ||
-    t === 'record:delete' ||
-    t === 'record:update' ||
-    t === 'record:archive' ||
-    t === 'record:unarchive' ||
-    t === 'record:add-note' ||
-    t === 'record:edit-note' ||
-    t === 'record:delete-note'
-  );
+  return typeof t === 'string' && MESSAGE_TYPES.has(t);
 }

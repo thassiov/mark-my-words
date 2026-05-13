@@ -398,6 +398,106 @@ describe('RecordService', () => {
     });
   });
 
+  describe('tag CRUD', () => {
+    async function seedWithTags(...tagSets: string[][]): Promise<string[]> {
+      const ids: string[] = [];
+      for (const tags of tagSets) {
+        const rec = await service.saveSelection(baseInput);
+        const updated = await service.update(rec.id, { tags });
+        ids.push(updated.id);
+      }
+      return ids;
+    }
+
+    describe('listAllTags', () => {
+      it('returns the deduped, sorted union across all records', async () => {
+        await seedWithTags(['zeta', 'alpha'], ['alpha', 'beta'], []);
+        expect(await service.listAllTags()).toEqual(['alpha', 'beta', 'zeta']);
+      });
+
+      it('returns [] when no tags exist anywhere', async () => {
+        await service.saveSelection(baseInput);
+        expect(await service.listAllTags()).toEqual([]);
+      });
+    });
+
+    describe('renameTag', () => {
+      it('rewrites the tag on every record that has it', async () => {
+        const [a, b, c] = await seedWithTags(['old', 'keep'], ['old'], ['unrelated']);
+        if (a === undefined || b === undefined || c === undefined) throw new Error('seed failed');
+        const touched = await service.renameTag('old', 'new');
+        expect(touched.map((r) => r.id).toSorted()).toEqual([a, b].toSorted());
+        expect(touched.every((r) => r.tags?.includes('new'))).toBe(true);
+        expect(touched.every((r) => !r.tags?.includes('old'))).toBe(true);
+        // Unrelated record stays untouched.
+        const stillUnrelated = await service.list({ archived: false });
+        expect(stillUnrelated.find((r) => r.id === c)?.tags).toEqual(['unrelated']);
+      });
+
+      it('rejects rename when the target name already exists somewhere', async () => {
+        await seedWithTags(['old'], ['target']);
+        await expect(service.renameTag('old', 'target')).rejects.toThrow(/already exists/);
+      });
+
+      it('normalizes target and source (trim + lowercase)', async () => {
+        await seedWithTags(['old']);
+        const touched = await service.renameTag('  OLD ', '  New ');
+        expect(touched[0]?.tags).toEqual(['new']);
+      });
+
+      it('is a no-op when from === to (post-normalize)', async () => {
+        await seedWithTags(['foo']);
+        const touched = await service.renameTag('FOO', 'foo');
+        expect(touched).toEqual([]);
+      });
+
+      it('throws on empty input', async () => {
+        await expect(service.renameTag('', 'x')).rejects.toThrow(/empty/);
+        await expect(service.renameTag('x', '')).rejects.toThrow(/empty/);
+      });
+    });
+
+    describe('mergeTag', () => {
+      it('merges records that only had `from` and dedupes for records that had both', async () => {
+        const [a, b, c] = await seedWithTags(['from', 'extra'], ['into'], ['from', 'into']);
+        if (a === undefined || b === undefined || c === undefined) throw new Error('seed failed');
+        const touched = await service.mergeTag('from', 'into');
+        expect(touched.map((r) => r.id).toSorted()).toEqual([a, c].toSorted());
+
+        const all = await service.list({ archived: false });
+        const byId = new Map(all.map((r) => [r.id, r]));
+        expect(byId.get(a)?.tags?.toSorted()).toEqual(['extra', 'into']);
+        expect(byId.get(b)?.tags).toEqual(['into']);
+        expect(byId.get(c)?.tags).toEqual(['into']); // dedup
+      });
+
+      it('is a no-op when from === into', async () => {
+        await seedWithTags(['foo']);
+        expect(await service.mergeTag('foo', 'foo')).toEqual([]);
+      });
+    });
+
+    describe('deleteTag', () => {
+      it('removes the tag from every record', async () => {
+        const [a, b, c] = await seedWithTags(['gone', 'keep'], ['gone'], ['unrelated']);
+        if (a === undefined || b === undefined || c === undefined) throw new Error('seed failed');
+        const touched = await service.deleteTag('gone');
+        expect(touched.map((r) => r.id).toSorted()).toEqual([a, b].toSorted());
+
+        const all = await service.list({ archived: false });
+        const byId = new Map(all.map((r) => [r.id, r]));
+        expect(byId.get(a)?.tags).toEqual(['keep']);
+        expect(byId.get(b)?.tags).toBeUndefined(); // last tag dropped → field gone
+        expect(byId.get(c)?.tags).toEqual(['unrelated']);
+      });
+
+      it('returns [] when no records carry the tag', async () => {
+        await seedWithTags(['foo']);
+        expect(await service.deleteTag('bar')).toEqual([]);
+      });
+    });
+  });
+
   describe('addNote', () => {
     it('appends a new note (newest-first) and bumps record.updatedAt', async () => {
       vi.setSystemTime(new Date('2026-05-04T10:00:00Z'));

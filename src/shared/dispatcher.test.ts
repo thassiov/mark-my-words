@@ -17,6 +17,10 @@ function makeFakeService(): RecordService & {
   addNote: ReturnType<typeof vi.fn>;
   editNote: ReturnType<typeof vi.fn>;
   deleteNote: ReturnType<typeof vi.fn>;
+  listAllTags: ReturnType<typeof vi.fn>;
+  renameTag: ReturnType<typeof vi.fn>;
+  mergeTag: ReturnType<typeof vi.fn>;
+  deleteTag: ReturnType<typeof vi.fn>;
 } {
   const fake = {
     saveSelection: vi.fn(),
@@ -30,6 +34,10 @@ function makeFakeService(): RecordService & {
     addNote: vi.fn(),
     editNote: vi.fn(),
     deleteNote: vi.fn(),
+    listAllTags: vi.fn(),
+    renameTag: vi.fn(),
+    mergeTag: vi.fn(),
+    deleteTag: vi.fn(),
   };
   return fake as unknown as RecordService & typeof fake;
 }
@@ -282,6 +290,59 @@ describe('createDispatcher', () => {
 
       expect(records.deleteNote).toHaveBeenCalledWith('id-1', 'n-1');
       expect(result).toEqual(fakeRecord);
+    });
+  });
+
+  describe('tag:list', () => {
+    it('routes to records.listAllTags', async () => {
+      const records = makeFakeService();
+      records.listAllTags.mockResolvedValue(['a', 'b']);
+      const dispatch = createDispatcher({ records });
+      const result = await dispatch({ type: 'tag:list' });
+      expect(records.listAllTags).toHaveBeenCalledOnce();
+      expect(result).toEqual(['a', 'b']);
+    });
+  });
+
+  describe('tag:rename', () => {
+    it('routes to records.renameTag with from + to', async () => {
+      const records = makeFakeService();
+      records.renameTag.mockResolvedValue([fakeRecord]);
+      const dispatch = createDispatcher({ records });
+      const result = await dispatch({
+        type: 'tag:rename',
+        payload: { from: 'old', to: 'new' },
+      });
+      expect(records.renameTag).toHaveBeenCalledWith('old', 'new');
+      expect(result).toEqual([fakeRecord]);
+    });
+  });
+
+  describe('tag:merge', () => {
+    it('routes to records.mergeTag with from + into', async () => {
+      const records = makeFakeService();
+      records.mergeTag.mockResolvedValue([fakeRecord]);
+      const dispatch = createDispatcher({ records });
+      const result = await dispatch({
+        type: 'tag:merge',
+        payload: { from: 'src', into: 'dst' },
+      });
+      expect(records.mergeTag).toHaveBeenCalledWith('src', 'dst');
+      expect(result).toEqual([fakeRecord]);
+    });
+  });
+
+  describe('tag:delete', () => {
+    it('routes to records.deleteTag with the tag name', async () => {
+      const records = makeFakeService();
+      records.deleteTag.mockResolvedValue([fakeRecord]);
+      const dispatch = createDispatcher({ records });
+      const result = await dispatch({
+        type: 'tag:delete',
+        payload: { name: 'gone' },
+      });
+      expect(records.deleteTag).toHaveBeenCalledWith('gone');
+      expect(result).toEqual([fakeRecord]);
     });
   });
 
