@@ -5,6 +5,13 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import { downloadExport } from '../io/download.js';
 import { buildExport } from '../io/export.js';
+import { parseExport } from '../io/format.js';
+import {
+  ImportValidationError,
+  importExport,
+  type ConflictPolicy,
+  type ImportSummary,
+} from '../io/import.js';
 import { errorMessage } from '../lib/error.js';
 import { formatRelative } from '../lib/time.js';
 import { hostnameOf } from '../lib/url.js';
@@ -1343,10 +1350,60 @@ function SettingsSection() {
   );
 }
 
+function summarizeImport(s: ImportSummary): string {
+  const parts: string[] = [`${String(s.imported)} imported`];
+  if (s.replaced > 0) parts.push(`${String(s.replaced)} replaced`);
+  if (s.renamed > 0) parts.push(`${String(s.renamed)} kept as new`);
+  if (s.skipped > 0) parts.push(`${String(s.skipped)} skipped (already present)`);
+  return parts.join(', ');
+}
+
+function describeParseError(err: { kind: string; reason?: string; got?: number }): string {
+  if (err.kind === 'not-mmw') return "this doesn't look like a mark-my-words export file";
+  if (err.kind === 'future-version') {
+    return `this file was made by a newer version (format ${String(err.got ?? '?')}). Update the extension first.`;
+  }
+  return err.reason ?? 'malformed file';
+}
+
 function DataCard() {
   const [includeScreenshots, setIncludeScreenshots] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<ConflictPolicy>('skip');
+  const [exportBusy, setExportBusy] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const onFileSelected = (file: File) => {
+    setImportBusy(true);
+    setImportError(null);
+    setImportResult(null);
+    void file
+      .text()
+      .then((text) => {
+        const parsed = parseExport(JSON.parse(text) as unknown);
+        if (!parsed.ok) {
+          throw new Error(describeParseError(parsed.error));
+        }
+        return importExport(parsed.value, { conflict });
+      })
+      .then((summary) => {
+        setImportResult(summarizeImport(summary));
+      })
+      .catch((err: unknown) => {
+        if (err instanceof ImportValidationError) {
+          setImportError(`record #${String(err.failure.index)}: ${err.failure.reason}`);
+        } else {
+          setImportError(errorMessage(err));
+        }
+      })
+      .finally(() => {
+        setImportBusy(false);
+        if (fileRef.current) fileRef.current.value = '';
+      });
+  };
 
   return (
     <SettingsCard title="Data">
@@ -1354,7 +1411,11 @@ function DataCard() {
         label="Include screenshots in export"
         description="Page screenshots are ~99% of an export's size — disable for a slim text-only file."
       >
-        <Toggle checked={includeScreenshots} disabled={busy} onChange={setIncludeScreenshots} />
+        <Toggle
+          checked={includeScreenshots}
+          disabled={exportBusy}
+          onChange={setIncludeScreenshots}
+        />
       </SettingRow>
       <SettingRow
         label="Export library"
@@ -1362,29 +1423,79 @@ function DataCard() {
       >
         <button
           type="button"
-          disabled={busy}
+          disabled={exportBusy}
           onClick={() => {
-            setBusy(true);
-            setError(null);
+            setExportBusy(true);
+            setExportError(null);
             void buildExport({ includeScreenshots })
               .then((env) => {
                 downloadExport(env);
               })
               .catch((err: unknown) => {
-                setError(errorMessage(err));
+                setExportError(errorMessage(err));
               })
               .finally(() => {
-                setBusy(false);
+                setExportBusy(false);
               });
           }}
           className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-900 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {busy ? 'Working…' : 'Export'}
+          {exportBusy ? 'Working…' : 'Export'}
         </button>
       </SettingRow>
-      {error === null ? null : (
+      {exportError === null ? null : (
         <div className="text-xs text-red-600" role="alert">
-          Export failed: {error}
+          Export failed: {exportError}
+        </div>
+      )}
+
+      <SettingRow label="On duplicate id" description="What to do when a record id already exists.">
+        <select
+          value={conflict}
+          disabled={importBusy}
+          onChange={(e) => {
+            setConflict((e.target as HTMLSelectElement).value as ConflictPolicy);
+          }}
+          className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-stone-500 focus:outline-none focus:ring-2 focus:ring-stone-500/20"
+        >
+          <option value="skip">Skip (keep local)</option>
+          <option value="replace">Replace (restore from backup)</option>
+          <option value="rename">Keep both (assign new id)</option>
+        </select>
+      </SettingRow>
+      <SettingRow
+        label="Import library"
+        description="Load a JSON file produced by Export. Settings and meta are also merged."
+      >
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={(e) => {
+            const file = (e.target as HTMLInputElement).files?.[0];
+            if (file) onFileSelected(file);
+          }}
+        />
+        <button
+          type="button"
+          disabled={importBusy}
+          onClick={() => {
+            fileRef.current?.click();
+          }}
+          className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-900 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {importBusy ? 'Working…' : 'Import'}
+        </button>
+      </SettingRow>
+      {importError === null ? null : (
+        <div className="text-xs text-red-600" role="alert">
+          Import failed: {importError}
+        </div>
+      )}
+      {importResult === null ? null : (
+        <div className="text-xs text-emerald-700" role="status">
+          {importResult}
         </div>
       )}
     </SettingsCard>
