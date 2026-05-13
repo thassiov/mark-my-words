@@ -3,6 +3,8 @@ import type { ComponentChildren } from 'preact';
 import { createPortal } from 'preact/compat';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
+import { downloadExport } from '../io/download.js';
+import { buildExport } from '../io/export.js';
 import { errorMessage } from '../lib/error.js';
 import { formatRelative } from '../lib/time.js';
 import { hostnameOf } from '../lib/url.js';
@@ -1319,6 +1321,8 @@ function SettingsSection() {
           </SettingRow>
         </SettingsCard>
 
+        <DataCard />
+
         <SettingsCard title="Keyboard shortcut">
           <div className="flex flex-wrap items-center gap-2">
             <kbd className="rounded border border-gray-300 bg-gray-100 px-2 py-1 font-mono text-xs text-gray-700">
@@ -1336,6 +1340,54 @@ function SettingsSection() {
         </SettingsCard>
       </div>
     </div>
+  );
+}
+
+function DataCard() {
+  const [includeScreenshots, setIncludeScreenshots] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <SettingsCard title="Data">
+      <SettingRow
+        label="Include screenshots in export"
+        description="Page screenshots are ~99% of an export's size — disable for a slim text-only file."
+      >
+        <Toggle checked={includeScreenshots} disabled={busy} onChange={setIncludeScreenshots} />
+      </SettingRow>
+      <SettingRow
+        label="Export library"
+        description="Download every record, page, setting, and meta entry as a single JSON file."
+      >
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true);
+            setError(null);
+            void buildExport({ includeScreenshots })
+              .then((env) => {
+                downloadExport(env);
+              })
+              .catch((err: unknown) => {
+                setError(errorMessage(err));
+              })
+              .finally(() => {
+                setBusy(false);
+              });
+          }}
+          className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-900 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {busy ? 'Working…' : 'Export'}
+        </button>
+      </SettingRow>
+      {error === null ? null : (
+        <div className="text-xs text-red-600" role="alert">
+          Export failed: {error}
+        </div>
+      )}
+    </SettingsCard>
   );
 }
 
