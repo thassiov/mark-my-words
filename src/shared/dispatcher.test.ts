@@ -14,6 +14,9 @@ function makeFakeService(): RecordService & {
   update: ReturnType<typeof vi.fn>;
   archive: ReturnType<typeof vi.fn>;
   unarchive: ReturnType<typeof vi.fn>;
+  addNote: ReturnType<typeof vi.fn>;
+  editNote: ReturnType<typeof vi.fn>;
+  deleteNote: ReturnType<typeof vi.fn>;
 } {
   const fake = {
     saveSelection: vi.fn(),
@@ -24,6 +27,9 @@ function makeFakeService(): RecordService & {
     update: vi.fn(),
     archive: vi.fn(),
     unarchive: vi.fn(),
+    addNote: vi.fn(),
+    editNote: vi.fn(),
+    deleteNote: vi.fn(),
   };
   return fake as unknown as RecordService & typeof fake;
 }
@@ -228,6 +234,54 @@ describe('createDispatcher', () => {
       await expect(dispatch({ type: 'record:unarchive', payload: { id: 'x' } })).rejects.toThrow(
         'not found',
       );
+    });
+  });
+
+  describe('record:add-note', () => {
+    it('routes to records.addNote with id + text', async () => {
+      const records = makeFakeService();
+      records.addNote.mockResolvedValue(fakeRecord);
+      const dispatch = createDispatcher({ records });
+
+      const result = await dispatch({
+        type: 'record:add-note',
+        payload: { id: 'id-1', text: 'first note' },
+      });
+
+      expect(records.addNote).toHaveBeenCalledWith('id-1', 'first note');
+      expect(result).toEqual(fakeRecord);
+    });
+  });
+
+  describe('record:edit-note', () => {
+    it('routes to records.editNote with id + noteId + text', async () => {
+      const records = makeFakeService();
+      records.editNote.mockResolvedValue(fakeRecord);
+      const dispatch = createDispatcher({ records });
+
+      const result = await dispatch({
+        type: 'record:edit-note',
+        payload: { id: 'id-1', noteId: 'n-1', text: 'edited' },
+      });
+
+      expect(records.editNote).toHaveBeenCalledWith('id-1', 'n-1', 'edited');
+      expect(result).toEqual(fakeRecord);
+    });
+  });
+
+  describe('record:delete-note', () => {
+    it('routes to records.deleteNote with id + noteId', async () => {
+      const records = makeFakeService();
+      records.deleteNote.mockResolvedValue(fakeRecord);
+      const dispatch = createDispatcher({ records });
+
+      const result = await dispatch({
+        type: 'record:delete-note',
+        payload: { id: 'id-1', noteId: 'n-1' },
+      });
+
+      expect(records.deleteNote).toHaveBeenCalledWith('id-1', 'n-1');
+      expect(result).toEqual(fakeRecord);
     });
   });
 
